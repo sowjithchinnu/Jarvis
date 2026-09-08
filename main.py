@@ -26,6 +26,25 @@ def show_status(text: str):
     print(f"{DIM}• {text}{RESET}")
 
 
+def choose_browser():
+    print(f"{CYAN}Choose your browser:{RESET}")
+    print("1. Google Chrome")
+    print("2. Brave Browser")
+    print("q. Exit")
+    while True:
+        try:
+            choice = input("Browser [1/2/q]: ").strip().lower()
+        except EOFError:
+            return None
+        if choice == "1":
+            return "chrome"
+        if choice == "2":
+            return "brave"
+        if choice in {"q", "quit", "exit"}:
+            return None
+        print(f"{YELLOW}Please choose 1, 2, or q.{RESET}")
+
+
 def main():
     logging.basicConfig(
         filename="jarvis.log",
@@ -41,7 +60,11 @@ def main():
     print(f"{CYAN}╰─────────────────────────────────────────╯{RESET}\n")
 
     try:
-        browser = BrowserExecutor(headless=False)
+        browser_name = choose_browser()
+        if browser_name is None:
+            print(f"{DIM}Goodbye.{RESET}")
+            return
+        browser = BrowserExecutor(browser_name=browser_name, headless=False)
         agent = Agent(browser, confirm_callback=confirm_action, on_status=show_status)
         while True:
             try:
@@ -52,6 +75,18 @@ def main():
                 continue
             if user_text.lower() in {"/quit", "/exit"}:
                 break
+            if user_text.lower() == "/undo":
+                try:
+                    description = "Undo the most recent reversible browser action."
+                    if confirm_action(description):
+                        result = agent._execute_tool("undo_last_action", {})
+                    else:
+                        result = "Undo cancelled."
+                    print(f"{CYAN}Jarvis:{RESET} {result}\n")
+                except Exception:
+                    logging.getLogger(__name__).exception("Undo failed")
+                    print(f"{RED}Jarvis error:{RESET} Undo failed. See jarvis.log for details.\n")
+                continue
 
             try:
                 reply = agent.chat(user_text)

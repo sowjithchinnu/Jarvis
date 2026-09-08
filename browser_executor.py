@@ -10,6 +10,8 @@ All methods return plain strings/dicts so they can be dropped straight
 back into the chat message history as tool results.
 """
 import ipaddress
+import re
+from pathlib import Path
 from urllib.parse import quote_plus, urlparse
 
 from playwright.sync_api import sync_playwright
@@ -18,17 +20,35 @@ from config import MAX_PAGE_TEXT_CHARS
 
 
 class BrowserExecutor:
-    def __init__(self, headless: bool = False):
+    def __init__(self, browser_name: str = "chrome", headless: bool = False):
         self._playwright = sync_playwright().start()
-        self.browser = self._playwright.chromium.launch(headless=headless)
+        browser_paths = {
+            "chrome": Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+            "brave": Path("/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"),
+        }
+        executable_path = browser_paths.get(browser_name)
+        if executable_path is None:
+            self._playwright.stop()
+            raise ValueError("Unsupported browser. Choose chrome or brave.")
+        if not executable_path.exists():
+            self._playwright.stop()
+            raise RuntimeError(f"{browser_name.title()} was not found at {executable_path}.")
+        self.browser = self._playwright.chromium.launch(
+            executable_path=str(executable_path),
+            headless=headless,
+        )
         self.page = self.browser.new_page()
         self._element_map = {}  # element_id -> Playwright Locator
+        self._undo_stack = []
 
     # ---------- low-risk (read-only) actions ----------
 
     def search_web(self, query: str) -> str:
+        previous_url = self.page.url
         self.page.goto(f"https://www.bing.com/search?q={quote_plus(query)}")
         self.page.wait_for_load_state("domcontentloaded")
+        if previous_url != "about:blank":
+            self._undo_stack.append({"type": "navigate", "url": previous_url})
         return self.read_page_text()
 
     def open_url(self, url: str) -> str:
@@ -38,8 +58,11 @@ class BrowserExecutor:
         if not raw_scheme:
             url = "https://" + url
         self._validate_url(url)
+        previous_url = self.page.url
         self.page.goto(url)
         self.page.wait_for_load_state("domcontentloaded")
+        if previous_url != "about:blank" and previous_url != url:
+            self._undo_stack.append({"type": "navigate", "url": previous_url})
         return f"Opened {url}. Current title: {self.page.title()}"
 
     @staticmethod
@@ -75,7 +98,11 @@ class BrowserExecutor:
         Internally maps ids to Playwright Locators for later actions.
         """
         self._element_map.clear()
-        selectors = "button, a, input, textarea, select, [role=button]"
+        selectors = "button, a, input, textarea, select, canvas, [role=button]"
+        try:
+            self.page.wait_for_selector(selectors, state="attached", timeout=2000)
+        except Exception:
+            pass
         locator = self.page.locator(selectors)
         count = min(locator.count(), 40)  # cap to keep context small
 
@@ -90,7 +117,11 @@ class BrowserExecutor:
                 placeholder = el.get_attribute("placeholder") or ""
                 el_id = f"el_{i}"
                 self._element_map[el_id] = el
-                label = text or placeholder or el.get_attribute("aria-label") or ""
+                if tag == "canvas":
+                    box = el.bounding_box()
+                    label = f"drawing surface {int(box['width'])}x{int(box['height'])}" if box else "drawing surface"
+                else:
+                    label = text or placeholder or el.get_attribute("aria-label") or ""
                 lines.append(f"{el_id}: <{tag}> {label}".strip())
             except Exception:
                 continue
@@ -100,7 +131,10 @@ class BrowserExecutor:
         return "\n".join(lines)
 
     def go_back(self) -> str:
+        current_url = self.page.url
         self.page.go_back()
+        if current_url != "about:blank":
+            self._undo_stack.append({"type": "navigate", "url": current_url})
         return f"Went back. Current title: {self.page.title()}"
 
     # ---------- medium/high-risk (state-changing) actions ----------
@@ -109,21 +143,97 @@ class BrowserExecutor:
         el = self._element_map.get(element_id)
         if el is None:
             return f"Error: unknown element_id '{element_id}'. Call list_interactive_elements first."
+        previous_url = self.page.url
         el.click()
         self.page.wait_for_load_state("domcontentloaded")
+        if self.page.url != previous_url:
+            self._undo_stack.append({"type": "navigate", "url": previous_url})
         return f"Clicked {element_id}. Current title: {self.page.title()}"
 
     def fill_field(self, element_id: str, value: str) -> str:
         el = self._element_map.get(element_id)
         if el is None:
             return f"Error: unknown element_id '{element_id}'. Call list_interactive_elements first."
+        previous_value = el.input_value()
         el.fill(value)
+        self._undo_stack.append(
+            {"type": "fill", "element": el, "value": previous_value}
+        )
         return f"Filled {element_id} with the given value."
+
+    def set_color(self, color: str) -> str:
+        if not isinstance(color, str):
+            return "Error: color must be a hex string such as #ff0000."
+        normalized = color.strip().lower()
+        if not re.fullmatch(r"#[0-9a-f]{6}", normalized):
+            return "Error: color must use #rrggbb format, such as #ff0000."
+
+        picker = self.page.locator('[title="Manual Color Input"]')
+        if picker.count() == 0:
+            return "Error: this page does not expose a manual color input."
+        hex_input = self.page.locator('input[name="manual-color-hex"]')
+        if not hex_input.is_visible():
+            picker.click()
+            hex_input.wait_for(state="visible", timeout=2000)
+        hex_input.fill(normalized[1:])
+        hex_input.press("Enter")
+        hex_input.press("Escape")
+        return f"Set the drawing color to {normalized}."
+
+    def draw_on_canvas(self, canvas_id: str, points: str) -> str:
+        canvas = self._element_map.get(canvas_id)
+        if canvas is None:
+            return f"Error: unknown canvas_id '{canvas_id}'. Call list_interactive_elements first."
+        if not points.strip():
+            return "Error: points cannot be empty."
+
+        try:
+            coordinates = [
+                (float(x.strip()), float(y.strip()))
+                for pair in points.split(";")
+                for x, y in [pair.split(",")]
+            ]
+        except (ValueError, TypeError):
+            return "Error: points must use x,y pairs separated by semicolons."
+        if len(coordinates) < 2 or len(coordinates) > 200:
+            return "Error: provide between 2 and 200 points."
+
+        box = canvas.bounding_box()
+        if not box:
+            return "Error: canvas bounds are unavailable."
+        width, height = box["width"], box["height"]
+        if any(x < 0 or y < 0 or x > width or y > height for x, y in coordinates):
+            return "Error: drawing points must stay inside the canvas."
+
+        first_x, first_y = coordinates[0]
+        self.page.mouse.move(box["x"] + first_x, box["y"] + first_y)
+        self.page.mouse.down()
+        try:
+            for x, y in coordinates[1:]:
+                self.page.mouse.move(box["x"] + x, box["y"] + y)
+        finally:
+            self.page.mouse.up()
+        return f"Drew a stroke on {canvas_id} using {len(coordinates)} points."
 
     def submit_form(self, element_id: str) -> str:
         # Treated same as click, but kept as a distinct high-risk tool so it
         # is easy to gate separately (e.g. require typed confirmation later).
         return self.click_element(element_id)
+
+    def undo_last_action(self) -> str:
+        if not self._undo_stack:
+            return "Nothing to undo."
+
+        action = self._undo_stack.pop()
+        if action["type"] == "navigate":
+            self._validate_url(action["url"])
+            self.page.goto(action["url"])
+            self.page.wait_for_load_state("domcontentloaded")
+            return f"Undid the last navigation. Current title: {self.page.title()}"
+        if action["type"] == "fill":
+            action["element"].fill(action["value"])
+            return "Undid the last field change."
+        return "The last action cannot be undone."
 
     def close(self):
         try:

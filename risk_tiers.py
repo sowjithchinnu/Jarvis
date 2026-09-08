@@ -20,8 +20,11 @@ RISK_TIERS = {
     "list_interactive_elements": LOW,
     "click_element": MEDIUM,
     "fill_field": MEDIUM,
+    "set_color": MEDIUM,
+    "draw_on_canvas": MEDIUM,
     "submit_form": HIGH,
     "go_back": LOW,
+    "undo_last_action": MEDIUM,
 }
 
 
@@ -38,10 +41,16 @@ def describe_action(tool_name: str, args: dict) -> str:
         return f"Click on element '{args.get('element_id')}'."
     if tool_name == "fill_field":
         return f"Type '{args.get('value')}' into field '{args.get('element_id')}'."
+    if tool_name == "set_color":
+        return f"Set the drawing color to '{args.get('color')}'."
+    if tool_name == "draw_on_canvas":
+        return f"Draw on canvas '{args.get('canvas_id')}'."
     if tool_name == "submit_form":
         return f"Submit the form (element '{args.get('element_id')}'). This may send data or trigger a purchase/login/etc."
     if tool_name == "open_url":
         return f"Open URL: {args.get('url')}"
+    if tool_name == "undo_last_action":
+        return "Undo the most recent reversible browser action."
     if tool_name == "search_web":
         return f"Search the web for: {args.get('query')}"
     return f"Run action '{tool_name}' with arguments: {args}"

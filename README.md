@@ -30,10 +30,12 @@ Run Jarvis:
 .venv/bin/python main.py
 ```
 
-The terminal displays the conversation while a visible Chromium browser opens
-alongside it.
+At startup, Jarvis asks whether to use Google Chrome or Brave. It opens a
+separate browser session and does not attach to your existing tabs or profiles.
 
 Type `/quit` or `/exit` to stop Jarvis.
+Type `/undo` to reverse the most recent reversible navigation or field change.
+Submitted forms and other external side effects cannot be undone.
 
 ## Actions
 
@@ -44,6 +46,9 @@ Type `/quit` or `/exit` to stop Jarvis.
 - Go back
 
 Interactive actions require confirmation.
+
+Drawing strokes generated as one drawing are grouped into a single confirmation
+so Jarvis does not interrupt once for every stroke.
 
 ## Tests
 

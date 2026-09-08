@@ -17,7 +17,12 @@ Add your Groq key to `.env`:
 
 ```env
 GROQ_API_KEY=your-key-here
+JARVIS_MODEL=openai/gpt-oss-120b
 ```
+
+`JARVIS_MODEL` is optional and defaults to `openai/gpt-oss-120b`. Keep `.env`
+local; it is ignored by Git. Technical failures and tool audit events are
+written to `jarvis.log`, which is also ignored.
 
 Run Jarvis:
 
@@ -39,3 +44,11 @@ Type `/quit` or `/exit` to stop Jarvis.
 - Go back
 
 Interactive actions require confirmation.
+
+## Tests
+
+Run the dependency-free test suite with:
+
+```bash
+.venv/bin/python -m unittest discover -s tests -v
+```

@@ -1,5 +1,7 @@
 """Terminal entry point for Jarvis."""
 
+import logging
+
 from agent import Agent
 from browser_executor import BrowserExecutor
 
@@ -25,8 +27,13 @@ def show_status(text: str):
 
 
 def main():
-    browser = BrowserExecutor(headless=False)
-    agent = Agent(browser, confirm_callback=confirm_action, on_status=show_status)
+    logging.basicConfig(
+        filename="jarvis.log",
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    browser = None
+    agent = None
 
     print(f"{CYAN}╭─ Jarvis ─────────────────────────────────╮{RESET}")
     print(f"{CYAN}│ Terminal browser agent                  │{RESET}")
@@ -34,6 +41,8 @@ def main():
     print(f"{CYAN}╰─────────────────────────────────────────╯{RESET}\n")
 
     try:
+        browser = BrowserExecutor(headless=False)
+        agent = Agent(browser, confirm_callback=confirm_action, on_status=show_status)
         while True:
             try:
                 user_text = input(f"{GREEN}You:{RESET} ").strip()
@@ -52,7 +61,10 @@ def main():
     except KeyboardInterrupt:
         print("\n")
     finally:
-        agent.close()
+        if agent is not None:
+            agent.close()
+        elif browser is not None:
+            browser.close()
         print(f"{DIM}Browser closed. Goodbye.{RESET}")
 
 

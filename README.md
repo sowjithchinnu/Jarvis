@@ -2,7 +2,7 @@
 
 A terminal browser agent powered by Groq. It can search the web, open pages,
 read content, and interact with forms. Clicks, typing, and submissions require
-confirmation. The controlled Chromium browser remains visible.
+confirmation. The selected browser remains visible.
 
 ## Setup
 
@@ -30,10 +30,13 @@ Run Jarvis:
 .venv/bin/python main.py
 ```
 
-At startup, Jarvis asks whether to use Google Chrome or Brave. It opens a
-separate browser session and does not attach to your existing tabs or profiles.
+At startup, Jarvis asks whether you want Browser tasks, Desktop tasks, or Both.
+Only Browser and Both modes ask whether to use Google Chrome or Brave. Browser
+sessions are separate and do not attach to existing tabs or profiles.
 
 Type `/quit` or `/exit` to stop Jarvis.
+Type `/cancel` while a request is running to cancel it. The current network or
+browser operation may finish first, then Jarvis stops before the next step.
 Type `/undo` to reverse the most recent reversible navigation or field change.
 Submitted forms and other external side effects cannot be undone.
 
@@ -44,11 +47,9 @@ Submitted forms and other external side effects cannot be undone.
 - List interactive elements
 - Click, fill, and submit forms
 - Go back
+- Capture a desktop screenshot after confirmation
 
 Interactive actions require confirmation.
-
-Drawing strokes generated as one drawing are grouped into a single confirmation
-so Jarvis does not interrupt once for every stroke.
 
 ## Tests
 

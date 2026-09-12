@@ -1,10 +1,19 @@
 import unittest
 
-from agent import Agent
+from agent import Agent, AgentCancelled
 from browser_executor import BrowserExecutor
 
 
 class AgentValidationTests(unittest.TestCase):
+    def test_cancelled_agent_raises_before_work(self):
+        agent = object.__new__(Agent)
+        import threading
+
+        agent.cancel_event = threading.Event()
+        agent.cancel_event.set()
+        with self.assertRaises(AgentCancelled):
+            agent._check_cancelled()
+
     def test_rejects_invalid_element_id(self):
         result = Agent._validate_tool_args("click_element", {"element_id": "button"})
         self.assertIn("Invalid element_id", result)
@@ -20,28 +29,11 @@ class AgentValidationTests(unittest.TestCase):
             )
         )
 
-    def test_accepts_valid_canvas_stroke(self):
-        self.assertIsNone(
-            Agent._validate_tool_args(
-                "draw_on_canvas",
-                {"canvas_id": "el_3", "points": "10,10;20,20"},
-            )
-        )
-
-    def test_accepts_valid_color(self):
-        self.assertIsNone(Agent._validate_tool_args("set_color", {"color": "#ff0000"}))
-
-    def test_rejects_invalid_color(self):
-        result = Agent._validate_tool_args("set_color", {"color": "ff0000"})
-        self.assertIn("Invalid color", result)
-
-    def test_draw_tool_is_medium_risk(self):
-        from risk_tiers import MEDIUM, get_risk
-
-        self.assertEqual(get_risk("draw_on_canvas"), MEDIUM)
-
     def test_accepts_undo_without_arguments(self):
         self.assertIsNone(Agent._validate_tool_args("undo_last_action", {}))
+
+    def test_accepts_screenshot_without_arguments(self):
+        self.assertIsNone(Agent._validate_tool_args("take_screenshot", {}))
 
     def test_trims_history_at_user_message_boundary(self):
         agent = object.__new__(Agent)

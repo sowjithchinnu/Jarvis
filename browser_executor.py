@@ -10,7 +10,6 @@ All methods return plain strings/dicts so they can be dropped straight
 back into the chat message history as tool results.
 """
 import ipaddress
-import re
 from pathlib import Path
 from urllib.parse import quote_plus, urlparse
 
@@ -98,7 +97,7 @@ class BrowserExecutor:
         Internally maps ids to Playwright Locators for later actions.
         """
         self._element_map.clear()
-        selectors = "button, a, input, textarea, select, canvas, [role=button]"
+        selectors = "button, a, input, textarea, select, [role=button]"
         try:
             self.page.wait_for_selector(selectors, state="attached", timeout=2000)
         except Exception:
@@ -117,11 +116,7 @@ class BrowserExecutor:
                 placeholder = el.get_attribute("placeholder") or ""
                 el_id = f"el_{i}"
                 self._element_map[el_id] = el
-                if tag == "canvas":
-                    box = el.bounding_box()
-                    label = f"drawing surface {int(box['width'])}x{int(box['height'])}" if box else "drawing surface"
-                else:
-                    label = text or placeholder or el.get_attribute("aria-label") or ""
+                label = text or placeholder or el.get_attribute("aria-label") or ""
                 lines.append(f"{el_id}: <{tag}> {label}".strip())
             except Exception:
                 continue
@@ -160,60 +155,6 @@ class BrowserExecutor:
             {"type": "fill", "element": el, "value": previous_value}
         )
         return f"Filled {element_id} with the given value."
-
-    def set_color(self, color: str) -> str:
-        if not isinstance(color, str):
-            return "Error: color must be a hex string such as #ff0000."
-        normalized = color.strip().lower()
-        if not re.fullmatch(r"#[0-9a-f]{6}", normalized):
-            return "Error: color must use #rrggbb format, such as #ff0000."
-
-        picker = self.page.locator('[title="Manual Color Input"]')
-        if picker.count() == 0:
-            return "Error: this page does not expose a manual color input."
-        hex_input = self.page.locator('input[name="manual-color-hex"]')
-        if not hex_input.is_visible():
-            picker.click()
-            hex_input.wait_for(state="visible", timeout=2000)
-        hex_input.fill(normalized[1:])
-        hex_input.press("Enter")
-        hex_input.press("Escape")
-        return f"Set the drawing color to {normalized}."
-
-    def draw_on_canvas(self, canvas_id: str, points: str) -> str:
-        canvas = self._element_map.get(canvas_id)
-        if canvas is None:
-            return f"Error: unknown canvas_id '{canvas_id}'. Call list_interactive_elements first."
-        if not points.strip():
-            return "Error: points cannot be empty."
-
-        try:
-            coordinates = [
-                (float(x.strip()), float(y.strip()))
-                for pair in points.split(";")
-                for x, y in [pair.split(",")]
-            ]
-        except (ValueError, TypeError):
-            return "Error: points must use x,y pairs separated by semicolons."
-        if len(coordinates) < 2 or len(coordinates) > 200:
-            return "Error: provide between 2 and 200 points."
-
-        box = canvas.bounding_box()
-        if not box:
-            return "Error: canvas bounds are unavailable."
-        width, height = box["width"], box["height"]
-        if any(x < 0 or y < 0 or x > width or y > height for x, y in coordinates):
-            return "Error: drawing points must stay inside the canvas."
-
-        first_x, first_y = coordinates[0]
-        self.page.mouse.move(box["x"] + first_x, box["y"] + first_y)
-        self.page.mouse.down()
-        try:
-            for x, y in coordinates[1:]:
-                self.page.mouse.move(box["x"] + x, box["y"] + y)
-        finally:
-            self.page.mouse.up()
-        return f"Drew a stroke on {canvas_id} using {len(coordinates)} points."
 
     def submit_form(self, element_id: str) -> str:
         # Treated same as click, but kept as a distinct high-risk tool so it

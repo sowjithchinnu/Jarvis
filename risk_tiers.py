@@ -20,11 +20,20 @@ RISK_TIERS = {
     "list_interactive_elements": LOW,
     "click_element": MEDIUM,
     "fill_field": MEDIUM,
-    "set_color": MEDIUM,
-    "draw_on_canvas": MEDIUM,
     "submit_form": HIGH,
     "go_back": LOW,
     "undo_last_action": MEDIUM,
+    "take_screenshot": LOW,
+    "get_volume": LOW,
+    # Volume changes are reversible and have no data-loss potential; raise to
+    # MEDIUM if future behavior introduces broader system-side effects.
+    "set_volume": LOW,
+}
+
+TOOL_ARG_SCHEMAS = {
+    "take_screenshot": {"required": set(), "allowed": set()},
+    "get_volume": {"required": set(), "allowed": set()},
+    "set_volume": {"required": {"level"}, "allowed": {"level"}},
 }
 
 
@@ -41,16 +50,16 @@ def describe_action(tool_name: str, args: dict) -> str:
         return f"Click on element '{args.get('element_id')}'."
     if tool_name == "fill_field":
         return f"Type '{args.get('value')}' into field '{args.get('element_id')}'."
-    if tool_name == "set_color":
-        return f"Set the drawing color to '{args.get('color')}'."
-    if tool_name == "draw_on_canvas":
-        return f"Draw on canvas '{args.get('canvas_id')}'."
     if tool_name == "submit_form":
         return f"Submit the form (element '{args.get('element_id')}'). This may send data or trigger a purchase/login/etc."
     if tool_name == "open_url":
         return f"Open URL: {args.get('url')}"
     if tool_name == "undo_last_action":
         return "Undo the most recent reversible browser action."
+    if tool_name == "take_screenshot":
+        return "Capture a screenshot of the local desktop. It may contain sensitive information."
+    if tool_name == "set_volume":
+        return f"Set system volume to {args.get('level')}%."
     if tool_name == "search_web":
         return f"Search the web for: {args.get('query')}"
     return f"Run action '{tool_name}' with arguments: {args}"

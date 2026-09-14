@@ -11,11 +11,15 @@ import json
 import logging
 import re
 import threading
-import time
 
 from openai import OpenAI
 
 from config import API_BASE_URL, API_KEY, MODEL_NAME
+from groq_retry import (
+    MAX_API_ATTEMPTS,
+    RETRY_DELAYS,
+    request_with_retry,
+)
 from os_executor import OSExecutor
 from risk_tiers import HIGH, get_risk, describe_action, LOW
 
@@ -26,8 +30,6 @@ class AgentCancelled(Exception):
     """Raised when the user cancels the active request."""
 
 
-MAX_API_ATTEMPTS = 3
-RETRY_DELAYS = (1, 2)
 ELEMENT_ID_PATTERN = re.compile(r"^el_[0-9]+$")
 MAX_QUERY_LENGTH = 1000
 MAX_URL_LENGTH = 2048
@@ -308,27 +310,17 @@ class Agent:
         return None
 
     def _request_completion(self):
-        for attempt in range(MAX_API_ATTEMPTS):
-            self._check_cancelled()
-            try:
-                return self.client.chat.completions.create(
-                    model=MODEL_NAME,
-                    messages=self.messages,
-                    tools=TOOLS,
-                    timeout=20,
-                )
-            except AgentCancelled:
-                raise
-            except Exception as error:
-                self._check_cancelled()
-                status_code = getattr(error, "status_code", None)
-                retryable = status_code is None or status_code == 429 or status_code >= 500
-                if not retryable or attempt == MAX_API_ATTEMPTS - 1:
-                    logger.exception("Model request failed after %d attempt(s)", attempt + 1)
-                    raise
-                delay = RETRY_DELAYS[attempt]
-                logger.warning("Model request failed; retrying in %ss: %s", delay, error)
-                time.sleep(delay)
+        return request_with_retry(
+            lambda: self.client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=self.messages,
+                tools=TOOLS,
+                timeout=20,
+            ),
+            logger=logger,
+            operation="Model request",
+            before_attempt=self._check_cancelled,
+        )
 
     def chat(self, user_text: str) -> str:
         with self._chat_lock:

@@ -82,6 +82,26 @@ JARVIS_TTS_MODEL=playai-tts
 JARVIS_TTS_VOICE=Fritz-PlayAI
 ```
 
+## OS capabilities
+
+In addition to screenshots and system-volume controls, Jarvis can read the
+current text clipboard and write supplied text to the system clipboard.
+Clipboard access is LOW risk operationally, but clipboard contents can be
+sensitive. Clipboard text is redacted in audit logs and is never written in
+full to `jarvis.log`.
+
+Clipboard support uses `pyperclip`. It is included in `requirements.txt` as:
+
+```text
+pyperclip>=1.8.2
+```
+
+To install it separately:
+
+```bash
+.venv/bin/pip install pyperclip
+```
+
 ## Actions
 
 - Search and open URLs
@@ -90,6 +110,7 @@ JARVIS_TTS_VOICE=Fritz-PlayAI
 - Click, fill, and submit forms
 - Go back
 - Capture a desktop screenshot after confirmation
+- Read and write the system clipboard
 
 Interactive actions require confirmation.
 

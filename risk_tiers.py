@@ -26,6 +26,8 @@ RISK_TIERS = {
     "take_screenshot": LOW,
     "get_volume": LOW,
     "get_clipboard": LOW,
+    "get_battery_status": LOW,
+    "get_system_status": LOW,
     # Volume changes are reversible and have no data-loss potential; raise to
     # MEDIUM if future behavior introduces broader system-side effects.
     "set_volume": LOW,
@@ -38,6 +40,8 @@ TOOL_ARG_SCHEMAS = {
     "set_volume": {"required": {"level"}, "allowed": {"level"}},
     "get_clipboard": {"required": set(), "allowed": set()},
     "set_clipboard": {"required": {"text"}, "allowed": {"text"}},
+    "get_battery_status": {"required": set(), "allowed": set()},
+    "get_system_status": {"required": set(), "allowed": set()},
 }
 
 

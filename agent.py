@@ -193,6 +193,32 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_battery_status",
+            "description": "Read the local battery percentage and charging state, or report when no battery is detected.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_system_status",
+            "description": "Read local CPU usage, memory usage, and available disk space.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": False,
+            },
+        },
+    },
 ]
 
 OS_TOOL_NAMES = {
@@ -201,6 +227,8 @@ OS_TOOL_NAMES = {
     "set_volume",
     "get_clipboard",
     "set_clipboard",
+    "get_battery_status",
+    "get_system_status",
 }
 
 
@@ -313,6 +341,8 @@ class Agent:
             "undo_last_action",
             "take_screenshot",
             "get_clipboard",
+            "get_battery_status",
+            "get_system_status",
         }
         if name in no_argument_tools and args:
             return f"Tool '{name}' does not accept arguments."

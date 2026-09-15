@@ -24,6 +24,26 @@ STT_MODEL = os.environ.get("JARVIS_STT_MODEL", "whisper-large-v3")
 TTS_MODEL = os.environ.get("JARVIS_TTS_MODEL", "playai-tts")
 TTS_VOICE = os.environ.get("JARVIS_TTS_VOICE", "Fritz-PlayAI")
 
+# Fixed application launch commands. Add new entries deliberately here; never
+# accept arbitrary paths or commands from the model or from user input.
+ALLOWED_APPS = {
+    "notepad": {
+        "Windows": ["notepad.exe"],
+        "Darwin": ["open", "-a", "TextEdit"],
+        "Linux": ["gedit"],
+    },
+    "calculator": {
+        "Windows": ["calc.exe"],
+        "Darwin": ["open", "-a", "Calculator"],
+        "Linux": ["gnome-calculator"],
+    },
+    "file_explorer": {
+        "Windows": ["explorer.exe"],
+        "Darwin": ["open", "-a", "Finder"],
+        "Linux": ["xdg-open", "."],
+    },
+}
+
 
 def _check_voice_dependencies() -> tuple[bool, str]:
     missing = []

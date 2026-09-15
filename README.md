@@ -82,14 +82,36 @@ JARVIS_TTS_MODEL=playai-tts
 JARVIS_TTS_VOICE=Fritz-PlayAI
 ```
 
-## Wake-word mode
+## Wake-word mode (experimental, opt-in)
 
-Wake-word listening is off by default. Run `/wake-on` to use openWakeWord's
-standard pretrained `hey_jarvis` model for the phrase “hey jarvis”; run
-`/wake-off` to stop it. On first use, Jarvis calls
-`openwakeword.utils.download_models()` if the standard model files are not
-already present. This downloads the small ONNX/TFLite model files once and
-then uses the locally cached copies. No custom model is trained or downloaded.
+Wake-word listening is off by default. Run `/wake-on` to start listening with
+openWakeWord's standard pretrained `hey_jarvis` model for the phrase “hey
+jarvis”; run `/wake-off` to stop it. The feature is experimental and opt-in.
+
+Wake-word detection is fully local: microphone audio used for detection is
+processed by openWakeWord on this machine and is not sent over the network.
+Only the follow-up utterance recorded after a local wake-word detection is
+sent to Groq for transcription, then processed through the normal agent flow.
+
+Risky-action confirmations still require keyboard input in the terminal, even
+in wake-word mode. This is intentional defense against a false-positive wake
+trigger or a transcription mistake turning into an unconfirmed click, form
+fill, or submission.
+
+Saying the wake word again while Jarvis is speaking interrupts audio playback
+(barge-in). It does not cancel an in-flight agent or tool operation; use
+`/cancel` for that.
+
+The `openwakeword` dependency is included in `requirements.txt`:
+
+```bash
+.venv/bin/pip install openwakeword
+```
+
+On first use, Jarvis calls `openwakeword.utils.download_models()` when the
+standard model files are not already available. The small ONNX/TFLite files
+are downloaded once and cached locally. Jarvis does not train or download a
+custom wake-word model.
 
 The model and detection sensitivity can be configured in `.env`:
 

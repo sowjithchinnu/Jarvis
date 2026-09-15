@@ -191,6 +191,10 @@ class WakeWordListener:
             ) as stream:
                 with self._state_lock:
                     self._stream = stream
+                    stop_requested = self._stop_event.is_set()
+
+                if stop_requested:
+                    stream.stop()
 
                 rolling_audio = np.empty(0, dtype=np.int16)
                 while not self._stop_event.is_set():

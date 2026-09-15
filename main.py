@@ -9,6 +9,7 @@ from browser_executor import BrowserExecutor
 from config import VOICE_DEPENDENCY_ERROR, VOICE_ENABLED
 from voice_io import cleanup_audio_file, play_audio, record_audio
 from voice_provider import synthesize_speech, transcribe_audio
+from voice_wakeword import WakeWordListener, WakeWordListenerError
 
 RESET = "\033[0m"
 CYAN = "\033[36m"
@@ -17,6 +18,8 @@ YELLOW = "\033[33m"
 RED = "\033[31m"
 DIM = "\033[2m"
 VOICE_TASK = object()
+WAKE_TRANSCRIPT_TASK = "wake_transcript"
+WAKE_RESTART_TASK = "wake_restart"
 
 
 def choose_browser():
@@ -69,6 +72,11 @@ class TerminalSession:
         self.stop_event = threading.Event()
         self.confirmation = None
         self.confirmation_lock = threading.Lock()
+        self.wake_listener = None
+        self.wake_lock = threading.Lock()
+        self.wake_enabled = False
+        self.wake_playback_interrupt = None
+        self.wake_response_playing = False
         self.worker = threading.Thread(target=self._worker, daemon=True)
 
     def start(self):
@@ -118,6 +126,14 @@ class TerminalSession:
                     self._run_voice_turn(agent)
                     self.cancel_event.clear()
                     continue
+                if isinstance(task, tuple) and task[0] == WAKE_TRANSCRIPT_TASK:
+                    self._run_voice_transcript(agent, task[1], wake_triggered=True)
+                    self.cancel_event.clear()
+                    self._restart_wake_listener()
+                    continue
+                if isinstance(task, tuple) and task[0] == WAKE_RESTART_TASK:
+                    self._restart_wake_listener()
+                    continue
                 if task == "undo":
                     try:
                         self._show_status("Running undo")
@@ -162,6 +178,18 @@ class TerminalSession:
                 return
 
             print(f"{GREEN}You (voice):{RESET} {transcript}\n")
+            self._run_voice_transcript(agent, transcript)
+        except AgentCancelled:
+            print(f"{YELLOW}Jarvis:{RESET} Request cancelled.\n")
+        except Exception:
+            logging.getLogger(__name__).exception("Voice request failed")
+            print(f"{RED}Jarvis error:{RESET} The voice request failed. See jarvis.log for details.\n")
+        finally:
+            if recording_path and not recording_path.startswith("Error"):
+                cleanup_audio_file(recording_path)
+
+    def _run_voice_transcript(self, agent, transcript, wake_triggered=False):
+        try:
             reply = agent.chat(transcript)
             print(f"{CYAN}Jarvis:{RESET} {reply}\n")
 
@@ -171,17 +199,131 @@ class TerminalSession:
                 print(f"{RED}Jarvis error:{RESET} {speech_path}\n")
                 return
 
-            playback_result = play_audio(speech_path)
+            with self.wake_lock:
+                interrupt_event = (
+                    self.wake_playback_interrupt if self.wake_enabled else None
+                )
+                if interrupt_event is not None:
+                    # This event interrupts audio playback only; it does not
+                    # cancel an in-flight agent/tool operation. /cancel is
+                    # deliberately the separate mechanism for that.
+                    # Clear stale state before beginning the next response.
+                    interrupt_event.clear()
+                    self.wake_response_playing = True
+            if wake_triggered:
+                self._restart_wake_listener()
+            try:
+                playback_result = play_audio(
+                    speech_path,
+                    interrupt_event=interrupt_event,
+                )
+            finally:
+                with self.wake_lock:
+                    self.wake_response_playing = False
             if playback_result.startswith("Error"):
                 print(f"{RED}Jarvis error:{RESET} {playback_result}\n")
+            elif playback_result == "Playback interrupted":
+                print(f"{YELLOW}Jarvis:{RESET} Playback interrupted.\n")
         except AgentCancelled:
             print(f"{YELLOW}Jarvis:{RESET} Request cancelled.\n")
         except Exception:
             logging.getLogger(__name__).exception("Voice request failed")
             print(f"{RED}Jarvis error:{RESET} The voice request failed. See jarvis.log for details.\n")
+
+    def _wake_word_detected(self):
+        """Capture a follow-up utterance and enqueue it for the single worker."""
+        with self.wake_lock:
+            if self.wake_response_playing and self.wake_playback_interrupt is not None:
+                self.wake_playback_interrupt.set()
+                print("🎤 Wake word detected, interrupting playback...")
+                return
+        print("🎤 Wake word detected, listening...")
+        with self.wake_lock:
+            listener = self.wake_listener
+        if listener is not None:
+            listener.stop()
+
+        recording_path = None
+        try:
+            if not VOICE_ENABLED:
+                print(f"{RED}Jarvis error:{RESET} {VOICE_DEPENDENCY_ERROR}\n")
+                self.tasks.put((WAKE_RESTART_TASK, None))
+                return
+
+            recording_path = record_audio()
+            if recording_path.startswith("Error"):
+                print(f"{RED}Jarvis error:{RESET} {recording_path}\n")
+                self.tasks.put((WAKE_RESTART_TASK, None))
+                return
+
+            transcript = transcribe_audio(recording_path)
+            if transcript.startswith("Error"):
+                print(f"{RED}Jarvis error:{RESET} {transcript}\n")
+                self.tasks.put((WAKE_RESTART_TASK, None))
+                return
+
+            print(f"{GREEN}You (voice):{RESET} {transcript}\n")
+            # Do not call agent.chat() here. Wake-word requests must share the
+            # existing worker queue so they cannot run alongside typed input.
+            self.tasks.put((WAKE_TRANSCRIPT_TASK, transcript))
+        except Exception:
+            logging.getLogger(__name__).exception("Wake-word follow-up failed")
+            print(f"{RED}Jarvis error:{RESET} The wake-word request failed. See jarvis.log for details.\n")
+            self.tasks.put((WAKE_RESTART_TASK, None))
         finally:
             if recording_path and not recording_path.startswith("Error"):
                 cleanup_audio_file(recording_path)
+
+    def _wake_word_error(self, message):
+        print(f"{RED}Jarvis error:{RESET} {message}\n")
+
+    def enable_wake_word(self):
+        with self.wake_lock:
+            if self.wake_listener is not None and self.wake_enabled:
+                print(f"{YELLOW}Jarvis:{RESET} Wake-word listening is already active.\n")
+                return
+            listener = WakeWordListener(
+                self._wake_word_detected,
+                error_callback=self._wake_word_error,
+            )
+            self.wake_listener = listener
+            self.wake_enabled = True
+            self.wake_playback_interrupt = threading.Event()
+        try:
+            listener.start()
+            print(f"{GREEN}Jarvis:{RESET} Wake-word listening enabled.\n")
+        except WakeWordListenerError:
+            with self.wake_lock:
+                self.wake_enabled = False
+                self.wake_listener = None
+                self.wake_playback_interrupt = None
+
+    def disable_wake_word(self, announce=True):
+        with self.wake_lock:
+            listener = self.wake_listener
+            was_enabled = self.wake_enabled
+            self.wake_enabled = False
+            self.wake_listener = None
+            self.wake_playback_interrupt = None
+            self.wake_response_playing = False
+        if not was_enabled or listener is None:
+            if announce:
+                print(f"{YELLOW}Jarvis:{RESET} Wake-word listening is not active.\n")
+            return
+        listener.stop()
+        if announce:
+            print(f"{GREEN}Jarvis:{RESET} Wake-word listening disabled.\n")
+
+    def _restart_wake_listener(self):
+        with self.wake_lock:
+            listener = self.wake_listener
+            enabled = self.wake_enabled
+        if not enabled or listener is None:
+            return
+        try:
+            listener.start()
+        except WakeWordListenerError as error:
+            self._wake_word_error(str(error))
 
     def submit(self, text):
         self.tasks.put(text)
@@ -198,6 +340,7 @@ class TerminalSession:
             request["event"].set()
 
     def stop(self):
+        self.disable_wake_word(announce=False)
         self.cancel()
         self.stop_event.set()
         self.tasks.put(None)
@@ -214,6 +357,10 @@ def main():
     print(f"{CYAN}│ Terminal Jarvis                          │{RESET}")
     print(f"{CYAN}│ /cancel stops the current request       │{RESET}")
     print(f"{CYAN}│ /voice records a one-shot voice request │{RESET}")
+    print(f"{CYAN}│ /wake-on enables wake-word listening    │{RESET}")
+    print(f"{CYAN}│ /wake-off disables wake-word listening  │{RESET}")
+    print(f"{CYAN}│ Spoken confirmations unsupported; use  │{RESET}")
+    print(f"{CYAN}│ the keyboard for risky actions          │{RESET}")
     print(f"{CYAN}│ /quit or /exit closes Jarvis            │{RESET}")
     print(f"{CYAN}╰─────────────────────────────────────────╯{RESET}\n")
 
@@ -246,9 +393,17 @@ def main():
                 session.cancel()
                 print(f"{YELLOW}Jarvis:{RESET} Cancellation requested.\n")
                 continue
+            if command in {"/wake-on", "/wakeword-on"}:
+                session.enable_wake_word()
+                continue
+            if command in {"/wake-off", "/wakeword-off"}:
+                session.disable_wake_word()
+                continue
             with session.confirmation_lock:
                 confirmation = session.confirmation
             if confirmation is not None:
+                # Intentional: wake-word turns use this same keyboard-only
+                # confirmation flow; spoken confirmation must not bypass it.
                 # Voice input is for the request itself, not for authorizing
                 # risky actions; confirmations remain terminal keyboard-only.
                 if confirmation["require_phrase"]:

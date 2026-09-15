@@ -24,6 +24,13 @@ STT_MODEL = os.environ.get("JARVIS_STT_MODEL", "whisper-large-v3")
 TTS_MODEL = os.environ.get("JARVIS_TTS_MODEL", "playai-tts")
 TTS_VOICE = os.environ.get("JARVIS_TTS_VOICE", "Fritz-PlayAI")
 
+# openWakeWord model name, or a path to a custom model file trained later.
+# Custom model files must be supplied deliberately; Jarvis never trains them.
+JARVIS_WAKEWORD_MODEL = os.environ.get("JARVIS_WAKEWORD_MODEL", "hey_jarvis")
+JARVIS_WAKEWORD_THRESHOLD = float(
+    os.environ.get("JARVIS_WAKEWORD_THRESHOLD", "0.5")
+)
+
 # Fixed application launch commands. Add new entries deliberately here; never
 # accept arbitrary paths or commands from the model or from user input.
 ALLOWED_APPS = {

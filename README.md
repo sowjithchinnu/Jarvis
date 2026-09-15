@@ -82,6 +82,27 @@ JARVIS_TTS_MODEL=playai-tts
 JARVIS_TTS_VOICE=Fritz-PlayAI
 ```
 
+## Wake-word mode
+
+Wake-word listening is off by default. Run `/wake-on` to use openWakeWord's
+standard pretrained `hey_jarvis` model for the phrase “hey jarvis”; run
+`/wake-off` to stop it. On first use, Jarvis calls
+`openwakeword.utils.download_models()` if the standard model files are not
+already present. This downloads the small ONNX/TFLite model files once and
+then uses the locally cached copies. No custom model is trained or downloaded.
+
+The model and detection sensitivity can be configured in `.env`:
+
+```env
+JARVIS_WAKEWORD_MODEL=hey_jarvis
+JARVIS_WAKEWORD_THRESHOLD=0.5
+```
+
+Higher thresholds reduce false positives but can miss more spoken wake words;
+lower thresholds are more sensitive but can produce more false positives.
+`JARVIS_WAKEWORD_MODEL` may later point to a deliberately trained local
+`.onnx` or `.tflite` model file.
+
 ## OS capabilities
 
 In addition to screenshots and system-volume controls, Jarvis can read the

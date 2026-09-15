@@ -9,3 +9,4 @@ pycaw>=20230407
 numpy>=1.26.0
 sounddevice>=0.4.6
 soundfile>=0.12.1
+openwakeword>=0.6.0

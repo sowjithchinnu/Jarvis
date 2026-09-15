@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import threading
 import time
 import wave
 from pathlib import Path
@@ -121,11 +122,13 @@ def record_audio(max_seconds: int = 15) -> str:
         return f"Error recording audio: {error}"
 
 
-def play_audio(file_path: str) -> str:
+def play_audio(file_path: str, interrupt_event: threading.Event | None = None) -> str:
     """Play an audio file and block until playback finishes.
 
     Temporary WAV files produced by :func:`record_audio` are removed after
-    playback. Caller-owned files are left untouched.
+    playback. Caller-owned files are left untouched. When ``interrupt_event``
+    is supplied, playback is stopped by the sounddevice callback when the
+    event is set and ``"Playback interrupted"`` is returned.
     """
     try:
         if not isinstance(file_path, str) or not file_path.strip():
@@ -134,9 +137,55 @@ def play_audio(file_path: str) -> str:
         import sounddevice as sd
         import soundfile as sf
 
-        audio, sample_rate = sf.read(file_path, dtype="float32", always_2d=False)
-        sd.play(audio, sample_rate)
-        sd.wait()
+        if interrupt_event is None:
+            audio, sample_rate = sf.read(file_path, dtype="float32", always_2d=False)
+            sd.play(audio, sample_rate)
+            sd.wait()
+            return "Audio playback completed."
+
+        if interrupt_event.is_set():
+            return "Playback interrupted"
+
+        import numpy as np
+
+        audio, sample_rate = sf.read(file_path, dtype="float32", always_2d=True)
+        if audio.size == 0:
+            return "Error playing audio: the audio file is empty."
+
+        audio = np.asarray(audio, dtype=np.float32)
+        channels = audio.shape[1]
+        position = 0
+        interrupted = False
+        playback_finished = threading.Event()
+
+        def callback(outdata, frames, _time_info, _status):
+            nonlocal position, interrupted
+            if interrupt_event.is_set():
+                interrupted = True
+                outdata.fill(0)
+                raise sd.CallbackStop
+
+            end = min(position + frames, len(audio))
+            count = end - position
+            if count:
+                outdata[:count] = audio[position:end]
+                position = end
+            if count < frames:
+                outdata[count:].fill(0)
+                raise sd.CallbackStop
+
+        with sd.OutputStream(
+            samplerate=sample_rate,
+            channels=channels,
+            dtype="float32",
+            blocksize=max(1, int(sample_rate * 0.1)),
+            callback=callback,
+            finished_callback=playback_finished.set,
+        ):
+            playback_finished.wait()
+
+        if interrupted:
+            return "Playback interrupted"
         return "Audio playback completed."
     except Exception as error:
         return f"Error playing audio: {error}"

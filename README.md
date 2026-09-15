@@ -90,17 +90,37 @@ Clipboard access is LOW risk operationally, but clipboard contents can be
 sensitive. Clipboard text is redacted in audit logs and is never written in
 full to `jarvis.log`.
 
-Clipboard support uses `pyperclip`. It is included in `requirements.txt` as:
+Jarvis also provides these local OS capabilities:
+
+- `open_application` launches only fixed, whitelist-based applications and
+  requires confirmation. To add an application, edit `ALLOWED_APPS` in
+  `config.py` deliberately with explicit argument lists for Windows, macOS,
+  and Linux. Arbitrary paths and commands must not be accepted as tool input.
+- `get_battery_status` and `get_system_status` are read-only and report battery
+  state, CPU usage, memory usage, and available primary-drive space.
+- `get_brightness` and `set_brightness` read and change screen brightness.
+  Brightness changes are reversible and do not require confirmation; levels
+  must be integers from 0 through 100.
+
+Clipboard support uses `pyperclip`. System status uses `psutil`, and screen
+brightness uses `screen-brightness-control`. They are included in
+`requirements.txt`:
 
 ```text
 pyperclip>=1.8.2
+psutil>=5.9.0
+screen-brightness-control>=0.24.2
 ```
 
-To install it separately:
+To install these dependencies separately:
 
 ```bash
-.venv/bin/pip install pyperclip
+.venv/bin/pip install pyperclip psutil screen-brightness-control
 ```
+
+Battery status reports no battery on desktop systems without one. Brightness
+control has partial or no support on some macOS hardware and may report that
+brightness control is unsupported for the display or operating system.
 
 ## Actions
 

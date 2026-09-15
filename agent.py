@@ -59,6 +59,11 @@ Rules:
     before using take_screenshot.
 - Limited OS access also includes reading and writing the system clipboard.
   Clipboard contents may be sensitive; do not expose them unnecessarily.
+- Limited OS access also includes reading battery and system status and
+  getting or setting screen brightness.
+- Limited OS access can launch applications only from a fixed whitelist.
+  Never invent an application name or provide an arbitrary path; if an app
+  name has not been confirmed as available, ask the user instead.
 - The undo_last_action tool only reverses recorded navigation and field-fill
     actions. It cannot reverse submitted forms or external side effects.
 """
@@ -219,6 +224,45 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "open_application",
+            "description": "Launch an application from the fixed whitelist only. Never provide an arbitrary path or command, and do not invent application names.",
+            "parameters": {
+                "type": "object",
+                "properties": {"app_name": {"type": "string"}},
+                "required": ["app_name"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_brightness",
+            "description": "Read the current screen brightness percentage.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_brightness",
+            "description": "Set screen brightness to an integer percentage from 0 through 100.",
+            "parameters": {
+                "type": "object",
+                "properties": {"level": {"type": "integer"}},
+                "required": ["level"],
+                "additionalProperties": False,
+            },
+        },
+    },
 ]
 
 OS_TOOL_NAMES = {
@@ -229,6 +273,9 @@ OS_TOOL_NAMES = {
     "set_clipboard",
     "get_battery_status",
     "get_system_status",
+    "open_application",
+    "get_brightness",
+    "set_brightness",
 }
 
 
@@ -343,6 +390,7 @@ class Agent:
             "get_clipboard",
             "get_battery_status",
             "get_system_status",
+            "get_brightness",
         }
         if name in no_argument_tools and args:
             return f"Tool '{name}' does not accept arguments."
@@ -354,6 +402,8 @@ class Agent:
             "fill_field": {"element_id", "value"},
             "submit_form": {"element_id"},
             "set_clipboard": {"text"},
+            "open_application": {"app_name"},
+            "set_brightness": {"level"},
         }.get(name, set())
         if name not in {tool["function"]["name"] for tool in TOOLS}:
             return f"Unknown tool '{name}'."
@@ -380,6 +430,16 @@ class Agent:
 
         if name == "set_clipboard" and not isinstance(args["text"], str):
             return "Invalid text. Expected a string."
+
+        if name == "open_application":
+            app_name = args["app_name"]
+            if not isinstance(app_name, str) or not app_name.strip():
+                return "Invalid app_name. Expected a non-empty string."
+
+        if name == "set_brightness":
+            level = args["level"]
+            if isinstance(level, bool) or not isinstance(level, int) or level not in range(0, 101):
+                return "Invalid brightness level. Expected an integer from 0 to 100."
         return None
 
     def _request_completion(self):

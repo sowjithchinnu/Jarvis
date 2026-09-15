@@ -28,10 +28,15 @@ RISK_TIERS = {
     "get_clipboard": LOW,
     "get_battery_status": LOW,
     "get_system_status": LOW,
+    "get_brightness": LOW,
     # Volume changes are reversible and have no data-loss potential; raise to
     # MEDIUM if future behavior introduces broader system-side effects.
     "set_volume": LOW,
     "set_clipboard": LOW,
+    "set_brightness": LOW,
+    # Application launches are MEDIUM because they spawn a real running
+    # process rather than merely toggling a reversible system value.
+    "open_application": MEDIUM,
 }
 
 TOOL_ARG_SCHEMAS = {
@@ -42,6 +47,9 @@ TOOL_ARG_SCHEMAS = {
     "set_clipboard": {"required": {"text"}, "allowed": {"text"}},
     "get_battery_status": {"required": set(), "allowed": set()},
     "get_system_status": {"required": set(), "allowed": set()},
+    "get_brightness": {"required": set(), "allowed": set()},
+    "set_brightness": {"required": {"level"}, "allowed": {"level"}},
+    "open_application": {"required": {"app_name"}, "allowed": {"app_name"}},
 }
 
 
@@ -68,10 +76,14 @@ def describe_action(tool_name: str, args: dict) -> str:
         return "Capture a screenshot of the local desktop. It may contain sensitive information."
     if tool_name == "set_volume":
         return f"Set system volume to {args.get('level')}%."
+    if tool_name == "set_brightness":
+        return f"Set screen brightness to {args.get('level')}%."
     if tool_name == "set_clipboard":
         text = str(args.get("text", ""))
         preview = text if len(text) <= 100 else f"{text[:97]}..."
         return f"Set clipboard to: {preview}"
+    if tool_name == "open_application":
+        return f"Open application: {args.get('app_name')}."
     if tool_name == "search_web":
         return f"Search the web for: {args.get('query')}"
     return f"Run action '{tool_name}' with arguments: {args}"

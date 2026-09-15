@@ -57,6 +57,8 @@ Rules:
   user declines, stop and ask what they'd like to do instead.
 - A screenshot may contain sensitive information, so ask for confirmation
     before using take_screenshot.
+- Limited OS access also includes reading and writing the system clipboard.
+  Clipboard contents may be sensitive; do not expose them unnecessarily.
 - The undo_last_action tool only reverses recorded navigation and field-fill
     actions. It cannot reverse submitted forms or external side effects.
 """
@@ -165,7 +167,41 @@ TOOLS = [
             "parameters": {"type": "object", "properties": {}},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_clipboard",
+            "description": "Read the current text content of the system clipboard. Non-text clipboard content is reported as unavailable.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_clipboard",
+            "description": "Set the system clipboard to the supplied text.",
+            "parameters": {
+                "type": "object",
+                "properties": {"text": {"type": "string"}},
+                "required": ["text"],
+                "additionalProperties": False,
+            },
+        },
+    },
 ]
+
+OS_TOOL_NAMES = {
+    "take_screenshot",
+    "get_volume",
+    "set_volume",
+    "get_clipboard",
+    "set_clipboard",
+}
 
 
 class Agent:
@@ -218,7 +254,7 @@ class Agent:
 
         self._audit(name, args, "started")
         try:
-            if name == "take_screenshot":
+            if name in OS_TOOL_NAMES:
                 executor = self.os_executor
             else:
                 if self.browser is None:
@@ -243,6 +279,8 @@ class Agent:
         safe_args = dict(args)
         if "value" in safe_args:
             safe_args["value"] = "[REDACTED]"
+        if "text" in safe_args:
+            safe_args["text"] = "[REDACTED]"
         return safe_args
 
     def _audit(self, tool_name: str, args: dict, outcome: str):
@@ -274,6 +312,7 @@ class Agent:
             "go_back",
             "undo_last_action",
             "take_screenshot",
+            "get_clipboard",
         }
         if name in no_argument_tools and args:
             return f"Tool '{name}' does not accept arguments."
@@ -284,6 +323,7 @@ class Agent:
             "click_element": {"element_id"},
             "fill_field": {"element_id", "value"},
             "submit_form": {"element_id"},
+            "set_clipboard": {"text"},
         }.get(name, set())
         if name not in {tool["function"]["name"] for tool in TOOLS}:
             return f"Unknown tool '{name}'."
@@ -307,6 +347,9 @@ class Agent:
                 return "Invalid element_id. Call list_interactive_elements first."
             if not isinstance(args["value"], str) or len(args["value"]) > MAX_VALUE_LENGTH:
                 return f"Invalid value. Expected a string under {MAX_VALUE_LENGTH} characters."
+
+        if name == "set_clipboard" and not isinstance(args["text"], str):
+            return "Invalid text. Expected a string."
         return None
 
     def _request_completion(self):

@@ -1,8 +1,10 @@
 """Small, whitelisted operating-system actions for Jarvis.
 
-This module intentionally exposes only screenshots and system-volume controls.
-It is not general-purpose OS control and does not simulate keyboard or mouse
-input.
+This module intentionally exposes only screenshots, clipboard, and
+system-volume controls. Clipboard access reads and writes shared OS state and
+should be treated as potentially sensitive, despite being LOW risk
+operationally. This module is not general-purpose OS control and does not
+simulate keyboard or mouse input.
 """
 
 from __future__ import annotations
@@ -16,9 +18,15 @@ from typing import Final
 
 from PIL import ImageGrab
 
+try:
+    import pyperclip
+except ImportError:
+    pyperclip = None
+
 PROJECT_DIR: Final[Path] = Path(__file__).resolve().parent
 SCREENSHOTS_DIR: Final[Path] = PROJECT_DIR / "screenshots"
 VOLUME_RANGE: Final[range] = range(0, 101)
+CLIPBOARD_NOT_INSTALLED: Final[str] = "Error: clipboard support not installed."
 
 
 class OSExecutor:
@@ -68,6 +76,32 @@ class OSExecutor:
             return f"Error: unsupported operating system '{system}'."
         except Exception as error:
             return f"Error setting system volume: {error}"
+
+    def get_clipboard(self) -> str:
+        """Return the current text content of the system clipboard."""
+        try:
+            if pyperclip is None:
+                return CLIPBOARD_NOT_INSTALLED
+            clipboard = pyperclip.paste()
+            if not isinstance(clipboard, str):
+                return "Clipboard does not contain text."
+            return clipboard
+        except Exception as error:
+            return f"Error reading clipboard: {error}"
+
+    def set_clipboard(self, text: str) -> str:
+        """Set the system clipboard to the supplied text."""
+        if not isinstance(text, str):
+            return "Error: clipboard text must be a string."
+
+        try:
+            if pyperclip is None:
+                return CLIPBOARD_NOT_INSTALLED
+            pyperclip.copy(text)
+            preview = text if len(text) <= 100 else f"{text[:97]}..."
+            return f"Clipboard set to: {preview}"
+        except Exception as error:
+            return f"Error setting clipboard: {error}"
 
     @staticmethod
     def _run_command(command: list[str]) -> str:

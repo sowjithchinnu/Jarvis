@@ -25,15 +25,19 @@ RISK_TIERS = {
     "undo_last_action": MEDIUM,
     "take_screenshot": LOW,
     "get_volume": LOW,
+    "get_clipboard": LOW,
     # Volume changes are reversible and have no data-loss potential; raise to
     # MEDIUM if future behavior introduces broader system-side effects.
     "set_volume": LOW,
+    "set_clipboard": LOW,
 }
 
 TOOL_ARG_SCHEMAS = {
     "take_screenshot": {"required": set(), "allowed": set()},
     "get_volume": {"required": set(), "allowed": set()},
     "set_volume": {"required": {"level"}, "allowed": {"level"}},
+    "get_clipboard": {"required": set(), "allowed": set()},
+    "set_clipboard": {"required": {"text"}, "allowed": {"text"}},
 }
 
 
@@ -60,6 +64,10 @@ def describe_action(tool_name: str, args: dict) -> str:
         return "Capture a screenshot of the local desktop. It may contain sensitive information."
     if tool_name == "set_volume":
         return f"Set system volume to {args.get('level')}%."
+    if tool_name == "set_clipboard":
+        text = str(args.get("text", ""))
+        preview = text if len(text) <= 100 else f"{text[:97]}..."
+        return f"Set clipboard to: {preview}"
     if tool_name == "search_web":
         return f"Search the web for: {args.get('query')}"
     return f"Run action '{tool_name}' with arguments: {args}"

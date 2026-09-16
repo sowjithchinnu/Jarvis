@@ -10,9 +10,11 @@ All methods return plain strings/dicts so they can be dropped straight
 back into the chat message history as tool results.
 """
 import ipaddress
+import threading
 from pathlib import Path
 from urllib.parse import quote_plus, urlparse
 
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
 from config import MAX_PAGE_TEXT_CHARS
@@ -30,6 +32,9 @@ CHALLENGE_PHRASES = (
     "challenge-platform",
     "cf-chl-",
 )
+PROJECT_DIR = Path(__file__).resolve().parent
+DOWNLOAD_DIR = PROJECT_DIR / "downloads"
+MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
 
 
 def is_likely_blocked(page) -> bool:
@@ -74,6 +79,15 @@ def is_likely_blocked(page) -> bool:
 
 class BrowserExecutor:
     def __init__(self, browser_name: str = "chrome", headless: bool = False):
+        self._download_lock = threading.Lock()
+        self._download_results = {}
+        self._last_download = None
+        self._download_setup_error = None
+        try:
+            DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        except Exception as error:
+            self._download_setup_error = f"Error preparing download directory: {error}"
+
         self._playwright = sync_playwright().start()
         browser_paths = {
             "chrome": Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
@@ -91,6 +105,7 @@ class BrowserExecutor:
             headless=headless,
         )
         self.page = self.browser.new_page()
+        self.page.on("download", self._handle_download)
         self._element_map = {}  # element_id -> Playwright Locator
         self._undo_stack = []
 
@@ -145,6 +160,21 @@ class BrowserExecutor:
         text = " ".join(text.split())  # collapse whitespace
         return text[:MAX_PAGE_TEXT_CHARS]
 
+    def get_last_download_info(self) -> str:
+        """Return details about the most recently completed download."""
+        try:
+            with self._download_lock:
+                download = self._last_download
+            if download is None:
+                return "No download has occurred yet."
+            return (
+                f"Filename: {download['filename']}; "
+                f"Saved path: {download['path']}; "
+                f"Size: {self._format_file_size(download['size'])}."
+            )
+        except Exception as error:
+            return f"Error reading last download info: {error}"
+
     def list_interactive_elements(self) -> str:
         """
         Scans the page for clickable / fillable elements and returns a
@@ -196,11 +226,35 @@ class BrowserExecutor:
         if el is None:
             return f"Error: unknown element_id '{element_id}'. Call list_interactive_elements first."
         previous_url = self.page.url
-        el.click()
-        self.page.wait_for_load_state("domcontentloaded")
+        download = None
+        try:
+            try:
+                with self.page.expect_download(timeout=1500) as download_info:
+                    el.click()
+                download = download_info.value
+            except PlaywrightTimeoutError:
+                # The click completed normally without starting a download.
+                pass
+        except Exception as error:
+            return f"Error clicking {element_id}: {error}"
+
+        try:
+            self.page.wait_for_load_state("domcontentloaded")
+        except Exception as error:
+            return f"Error completing click {element_id}: {error}"
+
         if self.page.url != previous_url:
             self._undo_stack.append({"type": "navigate", "url": previous_url})
-        return f"Clicked {element_id}. Current title: {self.page.title()}"
+        result = f"Clicked {element_id}. Current title: {self.page.title()}"
+        if download is not None:
+            with self._download_lock:
+                download_result = self._download_results.get(id(download))
+            if download_result is None:
+                download_result = self._save_download(download)
+            if download_result.startswith("Error"):
+                return download_result
+            return f"{result} Download started: {download_result}"
+        return result
 
     def fill_field(self, element_id: str, value: str) -> str:
         el = self._element_map.get(element_id)
@@ -217,6 +271,92 @@ class BrowserExecutor:
         # Treated same as click, but kept as a distinct high-risk tool so it
         # is easy to gate separately (e.g. require typed confirmation later).
         return self.click_element(element_id)
+
+    def _handle_download(self, download) -> None:
+        """Save a Playwright download and retain its result for click handling."""
+        result = self._save_download(download)
+        with self._download_lock:
+            self._download_results[id(download)] = result
+
+    def _save_download(self, download) -> str:
+        try:
+            if self._download_setup_error:
+                return self._download_setup_error
+
+            filename = Path(download.suggested_filename).name
+            if not filename or filename in {".", ".."}:
+                filename = "download"
+
+            failure = download.failure()
+            if failure:
+                return f"Error downloading '{filename}': {failure}"
+
+            source_path = Path(download.path())
+            size = source_path.stat().st_size
+            if size > MAX_DOWNLOAD_BYTES:
+                self._cancel_download(download)
+                return (
+                    f"Error downloading '{filename}': file exceeds the maximum "
+                    f"allowed size of {self._format_file_size(MAX_DOWNLOAD_BYTES)}."
+                )
+
+            destination = self._reserve_download_path(filename)
+            try:
+                download.save_as(str(destination))
+                size = destination.stat().st_size
+                if size > MAX_DOWNLOAD_BYTES:
+                    self._cancel_download(download)
+                    destination.unlink(missing_ok=True)
+                    return (
+                        f"Error downloading '{filename}': file exceeds the maximum "
+                        f"allowed size of {self._format_file_size(MAX_DOWNLOAD_BYTES)}."
+                    )
+            except Exception:
+                destination.unlink(missing_ok=True)
+                raise
+
+            info = {"filename": filename, "path": str(destination), "size": size}
+            with self._download_lock:
+                self._last_download = info
+            return (
+                f"Filename: {filename}; saved to {destination}; "
+                f"size {self._format_file_size(size)}"
+            )
+        except Exception as error:
+            return f"Error saving download: {error}"
+
+    @staticmethod
+    def _reserve_download_path(filename: str) -> Path:
+        candidate = DOWNLOAD_DIR / filename
+        suffix = 1
+        while True:
+            try:
+                candidate.touch(exist_ok=False)
+                return candidate
+            except FileExistsError:
+                path = Path(filename)
+                candidate = DOWNLOAD_DIR / f"{path.stem}_{suffix}{path.suffix}"
+                suffix += 1
+
+    @staticmethod
+    def _cancel_download(download) -> None:
+        try:
+            download.cancel()
+        except Exception:
+            pass
+        try:
+            download.delete()
+        except Exception:
+            pass
+
+    @staticmethod
+    def _format_file_size(size: int) -> str:
+        value = float(size)
+        for unit in ("B", "KB", "MB", "GB"):
+            if value < 1024 or unit == "GB":
+                return f"{int(value)} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+            value /= 1024
+        return f"{value:.1f} GB"
 
     def undo_last_action(self) -> str:
         if not self._undo_stack:

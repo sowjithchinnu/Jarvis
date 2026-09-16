@@ -67,6 +67,9 @@ Rules:
 - Limited OS access can launch applications only from a fixed whitelist.
   Never invent an application name or provide an arbitrary path; if an app
   name has not been confirmed as available, ask the user instead.
+- Downloads are saved automatically in a fixed local folder when a click
+  triggers one, and the result says so explicitly. If the user asks what was
+  just downloaded, use get_last_download_info.
 - The undo_last_action tool only reverses recorded navigation and field-fill
     actions. It cannot reverse submitted forms or external side effects.
 """
@@ -266,6 +269,19 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_last_download_info",
+            "description": "Return the filename, saved path, and size of the most recently completed browser download.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": False,
+            },
+        },
+    },
 ]
 
 OS_TOOL_NAMES = {
@@ -415,6 +431,7 @@ class Agent:
             "get_battery_status",
             "get_system_status",
             "get_brightness",
+            "get_last_download_info",
         }
         if name in no_argument_tools and args:
             return f"Tool '{name}' does not accept arguments."

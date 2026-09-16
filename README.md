@@ -165,6 +165,28 @@ Battery status reports no battery on desktop systems without one. Brightness
 control has partial or no support on some macOS hardware and may report that
 brightness control is unsupported for the display or operating system.
 
+## Downloads
+
+Browser downloads are saved automatically to the fixed project-local
+`downloads/` directory (`DOWNLOAD_DIR`). The model cannot choose a custom save
+path or filename. Downloads are limited to `MAX_DOWNLOAD_BYTES`, currently
+100 MB; change that constant in `browser_executor.py` deliberately if a
+different limit is needed.
+
+If the suggested filename already exists, Jarvis preserves the existing file
+and saves the new one with a numeric suffix such as `report_1.pdf`. After a
+download, ask “what did you just download” and Jarvis can use
+`get_last_download_info` to report the filename, saved path, and file size.
+
+## Safety features
+
+- URL validation rejects non-HTTP(S), local, private, loopback, and
+  cloud-metadata addresses.
+- Application launches use a fixed whitelist rather than model- or
+  user-controlled commands and paths.
+- Downloads use a fixed, non-model-controlled folder, collision-safe filenames,
+  and a maximum file-size limit.
+
 ## Actions
 
 - Search and open URLs

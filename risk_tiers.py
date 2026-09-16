@@ -29,6 +29,7 @@ RISK_TIERS = {
     "get_battery_status": LOW,
     "get_system_status": LOW,
     "get_brightness": LOW,
+    "get_last_download_info": LOW,
     # Volume changes are reversible and have no data-loss potential; raise to
     # MEDIUM if future behavior introduces broader system-side effects.
     "set_volume": LOW,
@@ -50,6 +51,7 @@ TOOL_ARG_SCHEMAS = {
     "get_brightness": {"required": set(), "allowed": set()},
     "set_brightness": {"required": {"level"}, "allowed": {"level"}},
     "open_application": {"required": {"app_name"}, "allowed": {"app_name"}},
+    "get_last_download_info": {"required": set(), "allowed": set()},
 }
 
 
@@ -63,7 +65,14 @@ def describe_action(tool_name: str, args: dict) -> str:
     confirmation dialog. Keep it plain-language, not a dump of raw args.
     """
     if tool_name == "click_element":
-        return f"Click on element '{args.get('element_id')}'."
+        # This risk layer does not have the browser DOM, so it cannot reliably
+        # inspect link text or hrefs for download hints. The existing
+        # click_element confirmation still applies, and any download is
+        # reported post-click by BrowserExecutor's result message.
+        return (
+            f"Click on element '{args.get('element_id')}'. "
+            "It may download a file to your computer."
+        )
     if tool_name == "fill_field":
         return f"Type '{args.get('value')}' into field '{args.get('element_id')}'."
     if tool_name == "submit_form":

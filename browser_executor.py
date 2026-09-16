@@ -17,6 +17,60 @@ from playwright.sync_api import sync_playwright
 
 from config import MAX_PAGE_TEXT_CHARS
 
+CHALLENGE_MARKER = "[POSSIBLE BOT-DETECTION BLOCK]"
+SHORT_PAGE_TEXT_CHARS = 200
+VERY_SHORT_PAGE_TEXT_CHARS = 120
+CHALLENGE_PHRASES = (
+    "checking your browser",
+    "verify you are human",
+    "attention required",
+    "cloudflare",
+    "captcha",
+    "just a moment",
+    "challenge-platform",
+    "cf-chl-",
+)
+
+
+def is_likely_blocked(page) -> bool:
+    """Heuristically detect a bot-detection or challenge page.
+
+    This is not a guarantee: legitimate short pages can produce false
+    positives, and unrecognized challenge pages can produce false negatives.
+    Any inspection failure returns ``False`` so it never changes navigation
+    failure behavior.
+    """
+    try:
+        title = (page.title() or "").strip().lower()
+    except Exception:
+        title = ""
+
+    try:
+        visible_text = " ".join((page.inner_text("body") or "").split()).lower()
+    except Exception:
+        visible_text = ""
+
+    combined_text = f"{title} {visible_text}"
+    if any(phrase in combined_text for phrase in CHALLENGE_PHRASES):
+        return True
+    if "access denied" in combined_text and len(visible_text) <= SHORT_PAGE_TEXT_CHARS:
+        return True
+
+    if len(visible_text) >= VERY_SHORT_PAGE_TEXT_CHARS:
+        return False
+
+    try:
+        if page.locator("iframe").count() > 0:
+            return True
+        challenge_selectors = (
+            "#challenge-running, #challenge-stage, .cf-chl-widget, "
+            "[data-cf-chl], [id*='challenge'], [class*='challenge'], "
+            "iframe[src*='captcha'], iframe[src*='challenge']"
+        )
+        return page.locator(challenge_selectors).count() > 0
+    except Exception:
+        return False
+
 
 class BrowserExecutor:
     def __init__(self, browser_name: str = "chrome", headless: bool = False):
@@ -62,7 +116,10 @@ class BrowserExecutor:
         self.page.wait_for_load_state("domcontentloaded")
         if previous_url != "about:blank" and previous_url != url:
             self._undo_stack.append({"type": "navigate", "url": previous_url})
-        return f"Opened {url}. Current title: {self.page.title()}"
+        result = f"Opened {url}. Current title: {self.page.title()}"
+        if is_likely_blocked(self.page):
+            result = f"{CHALLENGE_MARKER} {result}"
+        return result
 
     @staticmethod
     def _validate_url(url: str):

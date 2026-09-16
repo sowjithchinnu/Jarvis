@@ -177,6 +177,14 @@ brightness control is unsupported for the display or operating system.
 
 Interactive actions require confirmation.
 
+## Limitations
+
+Some sites use anti-bot or challenge pages that prevent automated access.
+Jarvis now attempts to detect common bot-detection signals and clearly marks
+likely blocks instead of silently presenting empty or misleading page content.
+This is only a heuristic: it can produce false positives on legitimate short
+pages and false negatives for challenge pages it does not recognize.
+
 ## Tests
 
 Run the dependency-free test suite with:

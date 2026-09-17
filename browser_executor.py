@@ -17,7 +17,7 @@ from urllib.parse import quote_plus, urlparse
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
-from config import MAX_PAGE_TEXT_CHARS
+from config import DOWNLOAD_DIR, MAX_PAGE_TEXT_CHARS
 
 CHALLENGE_MARKER = "[POSSIBLE BOT-DETECTION BLOCK]"
 SHORT_PAGE_TEXT_CHARS = 200
@@ -32,8 +32,6 @@ CHALLENGE_PHRASES = (
     "challenge-platform",
     "cf-chl-",
 )
-PROJECT_DIR = Path(__file__).resolve().parent
-DOWNLOAD_DIR = PROJECT_DIR / "downloads"
 MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
 
 
@@ -79,6 +77,8 @@ def is_likely_blocked(page) -> bool:
 
 class BrowserExecutor:
     def __init__(self, browser_name: str = "chrome", headless: bool = False):
+        self._browser_name = browser_name
+        self._headless = headless
         self._download_lock = threading.Lock()
         self._download_results = {}
         self._last_download = None
@@ -89,25 +89,57 @@ class BrowserExecutor:
             self._download_setup_error = f"Error preparing download directory: {error}"
 
         self._playwright = sync_playwright().start()
+        self._launch_browser()
+
+    def _launch_browser(self) -> None:
         browser_paths = {
             "chrome": Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
             "brave": Path("/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"),
         }
-        executable_path = browser_paths.get(browser_name)
+        executable_path = browser_paths.get(self._browser_name)
         if executable_path is None:
             self._playwright.stop()
             raise ValueError("Unsupported browser. Choose chrome or brave.")
         if not executable_path.exists():
             self._playwright.stop()
-            raise RuntimeError(f"{browser_name.title()} was not found at {executable_path}.")
+            raise RuntimeError(f"{self._browser_name.title()} was not found at {executable_path}.")
         self.browser = self._playwright.chromium.launch(
             executable_path=str(executable_path),
-            headless=headless,
+            headless=self._headless,
         )
         self.page = self.browser.new_page()
         self.page.on("download", self._handle_download)
         self._element_map = {}  # element_id -> Playwright Locator
         self._undo_stack = []
+
+    def is_alive(self) -> bool:
+        """Return whether the Playwright browser and current page are usable."""
+        try:
+            is_connected = getattr(self.browser, "is_connected", None)
+            if callable(is_connected) and not is_connected():
+                return False
+            _ = self.page.url
+            return True
+        except Exception:
+            return False
+
+    def relaunch(self) -> None:
+        """Replace a crashed browser with a fresh browser and page."""
+        try:
+            self.browser.close()
+        except Exception:
+            pass
+        try:
+            self._playwright.stop()
+        except Exception:
+            pass
+
+        self._playwright = sync_playwright().start()
+        self._launch_browser()
+        self._element_map.clear()
+        # Browser recovery intentionally does not preserve undo history:
+        # actions from the crashed session cannot be undone in this session.
+        self._undo_stack.clear()
 
     # ---------- low-risk (read-only) actions ----------
 

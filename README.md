@@ -178,6 +178,21 @@ and saves the new one with a numeric suffix such as `report_1.pdf`. After a
 download, ask “what did you just download” and Jarvis can use
 `get_last_download_info` to report the filename, saved path, and file size.
 
+## Reliability features
+
+- Startup configuration is validated before Jarvis starts. If multiple values
+  are invalid, startup fails fast with a complete list of problems rather than
+  reporting them one at a time as they are encountered.
+- Groq rate-limit and quota failures receive a specific message explaining
+  that the limit or quota was reached, separate from generic connection or
+  transient API errors. Rate-limited requests receive only a small number of
+  retries with their own backoff.
+- If the browser crashes or is closed during use, Jarvis automatically
+  relaunches the selected browser and retries the interrupted action exactly
+  once. The new session has no previous page state: navigate and log in again,
+  and do not reuse old `el_1`, `el_2`, etc. references. Undo history is also
+  lost across browser recovery.
+
 ## Safety features
 
 - URL validation rejects non-HTTP(S), local, private, loopback, and

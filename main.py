@@ -2,14 +2,10 @@
 
 import logging
 import queue
+import sys
 import threading
 
-from agent import Agent, AgentCancelled
-from browser_executor import BrowserExecutor
-from config import VOICE_DEPENDENCY_ERROR, VOICE_ENABLED
-from voice_io import cleanup_audio_file, play_audio, record_audio
-from voice_provider import synthesize_speech, transcribe_audio
-from voice_wakeword import WakeWordListener, WakeWordListenerError
+from config import ConfigValidationError, validate_config
 
 RESET = "\033[0m"
 CYAN = "\033[36m"
@@ -348,6 +344,26 @@ class TerminalSession:
 
 
 def main():
+    try:
+        validate_config()
+    except ConfigValidationError as error:
+        print(f"{RED}{error}{RESET}", file=sys.stderr)
+        raise SystemExit(1)
+
+    # Delay optional/heavy application imports until configuration is known to
+    # be usable, so invalid startup state is reported as configuration errors.
+    global Agent, AgentCancelled, BrowserExecutor
+    global VOICE_DEPENDENCY_ERROR, VOICE_ENABLED
+    global cleanup_audio_file, play_audio, record_audio
+    global synthesize_speech, transcribe_audio
+    global WakeWordListener, WakeWordListenerError
+    from agent import Agent, AgentCancelled
+    from browser_executor import BrowserExecutor
+    from config import VOICE_DEPENDENCY_ERROR, VOICE_ENABLED
+    from voice_io import cleanup_audio_file, play_audio, record_audio
+    from voice_provider import synthesize_speech, transcribe_audio
+    from voice_wakeword import WakeWordListener, WakeWordListenerError
+
     logging.basicConfig(
         filename="jarvis.log",
         level=logging.INFO,

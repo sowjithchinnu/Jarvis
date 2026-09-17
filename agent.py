@@ -341,8 +341,65 @@ class Agent:
             self.browser = self.browser_factory()
         return self.browser
 
+    def _recover_browser(self) -> bool:
+        """Relaunch the browser after a detected crash, without redoing confirmation."""
+        logger.error("Browser session lost; attempting browser recovery.")
+        old_browser = self.browser
+        try:
+            if hasattr(old_browser, "_element_map"):
+                old_browser._element_map.clear()
+            relaunch = getattr(old_browser, "relaunch", None)
+            if callable(relaunch):
+                relaunch()
+            elif self.browser_factory is not None:
+                close = getattr(old_browser, "close", None)
+                if callable(close):
+                    close()
+                self.browser = self.browser_factory()
+            else:
+                raise RuntimeError("No browser relaunch method or browser factory is available.")
+            if hasattr(self.browser, "_element_map"):
+                self.browser._element_map.clear()
+            if hasattr(self.browser, "_undo_stack"):
+                # Recovery cannot preserve undo history across browser sessions.
+                self.browser._undo_stack.clear()
+            self._last_tool_name = None
+            self._last_page_text = None
+            self.on_status(
+                "Browser session was lost and has been restarted. "
+                "You need to re-navigate and log in again; the previous page state "
+                "and element references are gone."
+            )
+            logger.warning("Browser session recovery succeeded.")
+            return True
+        except Exception:
+            logger.exception("Browser session recovery failed.")
+            return False
+
+    def _ensure_browser_alive(self) -> bool:
+        if self.browser is None:
+            return False
+        try:
+            alive = self.browser.is_alive()
+        except Exception:
+            alive = False
+        if alive:
+            return True
+        if not self._recover_browser():
+            return False
+        try:
+            return self.browser.is_alive()
+        except Exception:
+            return False
+
     def _execute_tool(self, name: str, args: dict) -> str:
         if name == "read_page_text" and self._last_tool_name == "search_web":
+            # Cached page text still assumes the browser session is continuous.
+            if self.browser is not None and not self._ensure_browser_alive():
+                return (
+                    "The read_page_text action could not run because the browser "
+                    "session was lost and could not be restarted."
+                )
             self._audit(name, args, "reused search_web result")
             return self._last_page_text or "No page text is available."
 
@@ -353,6 +410,12 @@ class Agent:
             else:
                 if self.browser is None:
                     return "This browser action is unavailable in Desktop mode. Restart Jarvis in Browser or Both mode."
+                if not self._ensure_browser_alive():
+                    logger.error("Browser recovery unavailable for tool: %s", name)
+                    return (
+                        f"The {name} action could not run because the browser session "
+                        "was lost and could not be restarted."
+                    )
                 executor = self.browser
             method = getattr(executor, name)
             result = method(**args)
@@ -494,6 +557,7 @@ class Agent:
             logger=logger,
             operation="Model request",
             before_attempt=self._check_cancelled,
+            on_rate_limit=self.on_status,
         )
 
     def chat(self, user_text: str) -> str:

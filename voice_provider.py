@@ -19,7 +19,7 @@ from config import (
     TTS_MODEL as CONFIG_TTS_MODEL,
     TTS_VOICE as CONFIG_TTS_VOICE,
 )
-from groq_retry import request_with_retry
+from groq_retry import is_rate_limit_error, rate_limit_message, request_with_retry
 
 
 logger = logging.getLogger(__name__)
@@ -66,6 +66,8 @@ def transcribe_audio(file_path: str) -> str:
         logger.info("Audio transcription completed.")
         return text
     except Exception as error:
+        if is_rate_limit_error(error):
+            return f"Error transcribing audio: {rate_limit_message(error)}"
         if _is_timeout_error(error):
             return "Error transcribing audio: the request timed out."
         return f"Error transcribing audio: {error}"
@@ -107,6 +109,8 @@ def synthesize_speech(text: str) -> str:
     except Exception as error:
         if output_path:
             _remove_file(output_path)
+        if is_rate_limit_error(error):
+            return f"Error synthesizing speech: {rate_limit_message(error)}"
         if _is_timeout_error(error):
             return "Error synthesizing speech: the request timed out."
         return f"Error synthesizing speech: {error}"

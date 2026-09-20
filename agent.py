@@ -20,6 +20,7 @@ from groq_retry import (
     RETRY_DELAYS,
     request_with_retry,
 )
+from memory_store import forget_fact, list_facts, remember_fact
 from os_executor import OSExecutor
 from risk_tiers import HIGH, get_risk, describe_action, LOW
 
@@ -67,6 +68,11 @@ Rules:
 - Limited OS access can launch applications only from a fixed whitelist.
   Never invent an application name or provide an arbitrary path; if an app
   name has not been confirmed as available, ask the user instead.
+- You can remember user-provided preferences and task context across sessions
+  with remember_fact when the user explicitly asks you to remember something.
+  Do not remember facts unprompted. Never remember passwords, credentials, API
+  keys, tokens, or other secrets; refuse and explain that this local memory is
+  unencrypted and is not suitable for secrets.
 - Downloads are saved automatically in a fixed local folder when a click
   triggers one, and the result says so explicitly. If the user asks what was
   just downloaded, use get_last_download_info.
@@ -282,6 +288,45 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "remember_fact",
+            "description": "Remember a user-requested preference or task-context fact for future sessions. Never store passwords, credentials, API keys, tokens, or other secrets.",
+            "parameters": {
+                "type": "object",
+                "properties": {"text": {"type": "string"}},
+                "required": ["text"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_facts",
+            "description": "List facts the user previously asked Jarvis to remember.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "forget_fact",
+            "description": "Forget remembered facts whose text contains the requested match text.",
+            "parameters": {
+                "type": "object",
+                "properties": {"match_text": {"type": "string"}},
+                "required": ["match_text"],
+                "additionalProperties": False,
+            },
+        },
+    },
 ]
 
 OS_TOOL_NAMES = {
@@ -296,6 +341,19 @@ OS_TOOL_NAMES = {
     "get_brightness",
     "set_brightness",
 }
+MEMORY_TOOL_NAMES = {"remember_fact", "list_facts", "forget_fact"}
+SECRET_MARKERS = (
+    "password",
+    "passwd",
+    "credential",
+    "api key",
+    "api_key",
+    "secret",
+    "access token",
+    "refresh token",
+    "private key",
+    "bearer token",
+)
 
 
 class Agent:
@@ -325,6 +383,13 @@ class Agent:
         self.confirm_callback = confirm_callback
         self.on_status = on_status or (lambda msg: None)
         self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        remembered = list_facts()
+        if remembered != "No facts remembered yet.":
+            recent_facts = remembered.splitlines()[-20:]
+            memory_note = "The user has previously told you:\n" + "\n".join(
+                f"- {fact}" for fact in recent_facts
+            )
+            self.messages.append({"role": "system", "content": memory_note[:4000]})
         self._chat_lock = threading.RLock()
         self._last_tool_name = None
         self._last_page_text = None
@@ -405,6 +470,16 @@ class Agent:
 
         self._audit(name, args, "started")
         try:
+            if name in MEMORY_TOOL_NAMES:
+                memory_operations = {
+                    "remember_fact": remember_fact,
+                    "list_facts": list_facts,
+                    "forget_fact": forget_fact,
+                }
+                result = memory_operations[name](**args)
+                self._last_tool_name = name
+                self._audit(name, args, "completed")
+                return result
             if name in OS_TOOL_NAMES:
                 executor = self.os_executor
             else:
@@ -443,6 +518,8 @@ class Agent:
             safe_args["value"] = "[REDACTED]"
         if "text" in safe_args:
             safe_args["text"] = "[REDACTED]"
+        if "match_text" in safe_args:
+            safe_args["match_text"] = "[REDACTED]"
         return safe_args
 
     def _audit(
@@ -495,6 +572,7 @@ class Agent:
             "get_system_status",
             "get_brightness",
             "get_last_download_info",
+            "list_facts",
         }
         if name in no_argument_tools and args:
             return f"Tool '{name}' does not accept arguments."
@@ -508,6 +586,8 @@ class Agent:
             "set_clipboard": {"text"},
             "open_application": {"app_name"},
             "set_brightness": {"level"},
+            "remember_fact": {"text"},
+            "forget_fact": {"match_text"},
         }.get(name, set())
         if name not in {tool["function"]["name"] for tool in TOOLS}:
             return f"Unknown tool '{name}'."
@@ -539,6 +619,22 @@ class Agent:
             app_name = args["app_name"]
             if not isinstance(app_name, str) or not app_name.strip():
                 return "Invalid app_name. Expected a non-empty string."
+
+        if name == "remember_fact":
+            text = args["text"]
+            if not isinstance(text, str) or not text.strip():
+                return "Invalid text. Expected a non-empty preference or task-context string."
+            normalized = text.casefold().replace("-", " ").replace("_", " ")
+            if any(marker in normalized for marker in SECRET_MARKERS):
+                return (
+                    "I won't remember that because it looks like a password, "
+                    "credential, API key, token, or other secret. Local memory is "
+                    "unencrypted and is only for preferences and task context."
+                )
+
+        if name == "forget_fact":
+            if not isinstance(args["match_text"], str) or not args["match_text"].strip():
+                return "Invalid match_text. Expected non-empty text."
 
         if name == "set_brightness":
             level = args["level"]

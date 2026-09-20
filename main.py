@@ -6,6 +6,15 @@ import sys
 import threading
 
 from config import ConfigValidationError, validate_config
+from memory_store import (
+    clear_all_facts,
+    delete_macro,
+    forget_fact,
+    get_macro,
+    list_facts,
+    list_macros,
+    save_macro,
+)
 
 RESET = "\033[0m"
 CYAN = "\033[36m"
@@ -375,6 +384,8 @@ def main():
     print(f"{CYAN}│ /voice records a one-shot voice request │{RESET}")
     print(f"{CYAN}│ /wake-on enables wake-word listening    │{RESET}")
     print(f"{CYAN}│ /wake-off disables wake-word listening  │{RESET}")
+    print(f"{CYAN}│ /memory list|forget|clear manages memory │{RESET}")
+    print(f"{CYAN}│ /macro save|run|list|delete manages macros│{RESET}")
     print(f"{CYAN}│ Spoken confirmations unsupported; use  │{RESET}")
     print(f"{CYAN}│ the keyboard for risky actions          │{RESET}")
     print(f"{CYAN}│ /quit or /exit closes Jarvis            │{RESET}")
@@ -393,6 +404,7 @@ def main():
 
     session = TerminalSession(mode, browser_name)
     session.start()
+    last_typed_request = None
     try:
         while True:
             try:
@@ -428,12 +440,73 @@ def main():
                     confirmation["approved"] = command in {"y", "yes"}
                 confirmation["event"].set()
                 continue
+            if command == "/memory" or command.startswith("/memory "):
+                memory_parts = user_text.split(maxsplit=2)
+                subcommand = memory_parts[1].lower() if len(memory_parts) > 1 else ""
+                if subcommand == "list" and len(memory_parts) == 2:
+                    print(f"{DIM}{list_facts()}{RESET}\n")
+                elif subcommand == "forget" and len(memory_parts) == 3 and memory_parts[2].strip():
+                    print(f"{DIM}{forget_fact(memory_parts[2])}{RESET}\n")
+                elif subcommand == "clear" and len(memory_parts) == 2:
+                    print(f"\n{YELLOW}Jarvis wants to:{RESET} Clear all remembered facts.")
+                    print(f"{YELLOW}This cannot be undone. Proceed? [y/N]:{RESET}")
+                    try:
+                        approved = input().strip().lower() in {"y", "yes"}
+                    except (EOFError, KeyboardInterrupt):
+                        approved = False
+                        print()
+                    if approved:
+                        print(f"{DIM}{clear_all_facts()}{RESET}\n")
+                    else:
+                        print(f"{YELLOW}Jarvis:{RESET} Memory clear cancelled.\n")
+                else:
+                    print(
+                        f"{YELLOW}Usage:{RESET} /memory list | "
+                        "/memory forget <text> | /memory clear\n"
+                    )
+                continue
+            if command == "/macro" or command.startswith("/macro "):
+                macro_parts = user_text.split(maxsplit=2)
+                subcommand = macro_parts[1].lower() if len(macro_parts) > 1 else ""
+                if subcommand == "save" and len(macro_parts) == 3:
+                    if last_typed_request is None:
+                        print(f"{YELLOW}Jarvis:{RESET} No previous typed request to save.\n")
+                    else:
+                        result = save_macro(macro_parts[2], last_typed_request)
+                        print(
+                            f"{DIM}{result} Saved request: {last_typed_request}{RESET}\n"
+                        )
+                elif subcommand == "run" and len(macro_parts) == 3:
+                    request_text = get_macro(macro_parts[2])
+                    if request_text is None:
+                        print(
+                            f"{YELLOW}Jarvis:{RESET} No macro found named "
+                            f"'{macro_parts[2]}'. Available macros:\n{list_macros()}\n"
+                        )
+                    else:
+                        # Macros replay a request, not a recorded tool-call sequence.
+                        # They therefore use the normal queue and full confirmation
+                        # flow every time; do not optimize this safety boundary away.
+                        session.submit(request_text)
+                        print(f"{DIM}Running macro '{macro_parts[2]}'.{RESET}\n")
+                elif subcommand == "list" and len(macro_parts) == 2:
+                    print(f"{DIM}{list_macros()}{RESET}\n")
+                elif subcommand == "delete" and len(macro_parts) == 3:
+                    print(f"{DIM}{delete_macro(macro_parts[2])}{RESET}\n")
+                else:
+                    print(
+                        f"{YELLOW}Usage:{RESET} /macro save <name> | "
+                        "/macro run <name> | /macro list | /macro delete <name>\n"
+                    )
+                continue
             if command == "/voice":
                 if not VOICE_ENABLED:
                     print(f"{RED}Jarvis error:{RESET} {VOICE_DEPENDENCY_ERROR}\n")
                 else:
                     session.submit_voice()
             else:
+                if command != "/undo":
+                    last_typed_request = user_text
                 session.submit("undo" if command == "/undo" else user_text)
     finally:
         session.stop()

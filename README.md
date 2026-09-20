@@ -42,6 +42,31 @@ Jarvis's reply. Risky-action confirmations still require terminal keyboard input
 Type `/undo` to reverse the most recent reversible navigation or field change.
 Submitted forms and other external side effects cannot be undone.
 
+## Memory and macros
+
+Jarvis can remember user-requested preferences and task context locally:
+
+- `remember_fact` stores a fact with a timestamp.
+- `list_facts` displays remembered facts.
+- `forget_fact` removes matching facts.
+- `/memory clear` removes all facts after an explicit confirmation.
+
+This data is stored in the local `memory.json` file. It is unencrypted and
+Git-ignored, so it should not contain passwords, credentials, API keys, or
+other secrets. The agent is instructed to refuse requests to remember secrets;
+use memory only for preferences and task context.
+
+Macros provide shortcuts for frequently repeated requests:
+
+- `/macro save <name>` saves the previous typed request under a name.
+- `/macro run <name>` runs a saved request.
+- `/macro list` lists saved macros and previews.
+- `/macro delete <name>` deletes a saved macro.
+
+Running a macro replays the original request through the normal agent flow and
+full confirmation checks every time. It is a shortcut for retyping a request,
+not a way to skip safety checks or replay a recorded tool-call sequence.
+
 ## Voice mode (push-to-talk)
 
 Type `/voice` to record one microphone request. Jarvis records until speech

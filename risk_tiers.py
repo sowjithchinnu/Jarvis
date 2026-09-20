@@ -38,6 +38,9 @@ RISK_TIERS = {
     # Application launches are MEDIUM because they spawn a real running
     # process rather than merely toggling a reversible system value.
     "open_application": MEDIUM,
+    "remember_fact": LOW,
+    "list_facts": LOW,
+    "forget_fact": LOW,
 }
 
 TOOL_ARG_SCHEMAS = {
@@ -52,6 +55,9 @@ TOOL_ARG_SCHEMAS = {
     "set_brightness": {"required": {"level"}, "allowed": {"level"}},
     "open_application": {"required": {"app_name"}, "allowed": {"app_name"}},
     "get_last_download_info": {"required": set(), "allowed": set()},
+    "remember_fact": {"required": {"text"}, "allowed": {"text"}},
+    "list_facts": {"required": set(), "allowed": set()},
+    "forget_fact": {"required": {"match_text"}, "allowed": {"match_text"}},
 }
 
 
@@ -93,6 +99,10 @@ def describe_action(tool_name: str, args: dict) -> str:
         return f"Set clipboard to: {preview}"
     if tool_name == "open_application":
         return f"Open application: {args.get('app_name')}."
+    if tool_name == "remember_fact":
+        return "Remember this preference or task context for future sessions."
+    if tool_name == "forget_fact":
+        return f"Forget remembered facts matching '{args.get('match_text')}'."
     if tool_name == "search_web":
         return f"Search the web for: {args.get('query')}"
     return f"Run action '{tool_name}' with arguments: {args}"

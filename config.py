@@ -23,39 +23,22 @@ MODEL_NAME = os.environ.get("JARVIS_MODEL", DEFAULT_MODEL)
 
 # Voice provider settings. These can be changed without editing Python code.
 STT_MODEL = os.environ.get("JARVIS_STT_MODEL", "whisper-large-v3")
-TTS_MODEL = os.environ.get("JARVIS_TTS_MODEL", "playai-tts")
-TTS_VOICE = os.environ.get("JARVIS_TTS_VOICE", "Fritz-PlayAI")
+# ISO-639-1 language spoken to Jarvis. Multi-language detection/switching is
+# out of scope for now; this should match the language actually being spoken.
+STT_LANGUAGE = os.environ.get("JARVIS_STT_LANGUAGE", "en")
+TTS_MODEL = os.environ.get("JARVIS_TTS_MODEL", "canopylabs/orpheus-v1-english")
+TTS_VOICE = os.environ.get("JARVIS_TTS_VOICE", "autumn")
 
-# PlayAI voices supported by Groq's PlayAI TTS models. Keep this list local so
+# Orpheus English voices supported by Groq. Keep this list local so
 # a typo is reported during startup instead of after the first voice request.
-PLAYAI_VALID_VOICES = frozenset(
+ORPHEUS_VALID_VOICES = frozenset(
     {
-        "Ahmad-PlayAI",
-        "Amira-PlayAI",
-        "Arista-PlayAI",
-        "Atlas-PlayAI",
-        "Basil-PlayAI",
-        "Briggs-PlayAI",
-        "Calum-PlayAI",
-        "Celeste-PlayAI",
-        "Cheyenne-PlayAI",
-        "Chip-PlayAI",
-        "Cillian-PlayAI",
-        "Deedee-PlayAI",
-        "Eleanor-PlayAI",
-        "Fritz-PlayAI",
-        "Gail-PlayAI",
-        "Indigo-PlayAI",
-        "Jennifer-PlayAI",
-        "Judy-PlayAI",
-        "Mamaw-PlayAI",
-        "Mason-PlayAI",
-        "Mikail-PlayAI",
-        "Mitch-PlayAI",
-        "Nia-PlayAI",
-        "Quinn-PlayAI",
-        "Ruby-PlayAI",
-        "Thunder-PlayAI",
+        "autumn",
+        "diana",
+        "hannah",
+        "austin",
+        "daniel",
+        "troy",
     }
 )
 
@@ -114,9 +97,9 @@ def validate_config():
     if not isinstance(API_KEY, str) or not API_KEY.strip():
         errors.append("GROQ_API_KEY must be present and non-empty.")
 
-    if VOICE_ENABLED and TTS_VOICE not in PLAYAI_VALID_VOICES:
+    if VOICE_ENABLED and TTS_VOICE not in ORPHEUS_VALID_VOICES:
         errors.append(
-            f"JARVIS_TTS_VOICE '{TTS_VOICE}' is not a known PlayAI voice."
+            f"JARVIS_TTS_VOICE '{TTS_VOICE}' is not a known Orpheus voice."
         )
 
     wakeword_model = JARVIS_WAKEWORD_MODEL

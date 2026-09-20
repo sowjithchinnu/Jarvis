@@ -16,6 +16,7 @@ it does not bypass or implement any confirmation flow.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from collections.abc import Callable
@@ -27,6 +28,8 @@ from config import JARVIS_WAKEWORD_MODEL, JARVIS_WAKEWORD_THRESHOLD
 logger = logging.getLogger(__name__)
 
 SAMPLE_RATE: Final[int] = 16_000
+MODEL_SAMPLE_RATE: Final[int] = 16_000
+MODEL_DTYPE: Final[str] = "int16"
 CHANNELS: Final[int] = 1
 FRAME_DURATION_SECONDS: Final[float] = 0.08
 FRAME_SAMPLES: Final[int] = int(SAMPLE_RATE * FRAME_DURATION_SECONDS)
@@ -69,6 +72,7 @@ class WakeWordListener:
 
         self._callback = callback
         self._error_callback = error_callback
+        self._debug = os.environ.get("JARVIS_WAKEWORD_DEBUG") == "1"
         self._threshold = float(threshold)
         self._detection_cooldown_seconds = detection_cooldown_seconds
         self._model_name = DEFAULT_MODEL_NAME
@@ -127,6 +131,15 @@ class WakeWordListener:
 
         with self._state_lock:
             self._model = model
+            if self._debug:
+                print(
+                    "Wake-word debug: audio stream "
+                    f"samplerate={SAMPLE_RATE} Hz, dtype=int16, "
+                    f"chunk_size={FRAME_SAMPLES} samples; openWakeWord model "
+                    f"expects samplerate={MODEL_SAMPLE_RATE} Hz, "
+                    f"dtype={MODEL_DTYPE}.",
+                    flush=True,
+                )
             self._thread = threading.Thread(
                 target=self._run,
                 name="jarvis-wake-word",
@@ -208,6 +221,8 @@ class WakeWordListener:
                         frame = rolling_audio[:FRAME_SAMPLES]
                         rolling_audio = rolling_audio[FRAME_SAMPLES:]
                         prediction = self._model.predict(frame)
+                        if self._debug:
+                            self._print_debug_scores(prediction)
                         if self._is_wake_word_prediction(prediction):
                             self._notify_detection()
         except Exception as error:
@@ -228,6 +243,15 @@ class WakeWordListener:
             except (TypeError, ValueError):
                 continue
         return bool(scores) and max(scores) >= self._threshold
+
+    @staticmethod
+    def _print_debug_scores(prediction: Any) -> None:
+        """Print raw model scores for one prediction when debug mode is enabled."""
+        if isinstance(prediction, dict):
+            for score in prediction.values():
+                print(f"score: {score}", flush=True)
+        else:
+            print(f"score: {prediction}", flush=True)
 
     def _notify_detection(self) -> None:
         now = time.monotonic()

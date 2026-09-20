@@ -172,6 +172,9 @@ class TerminalSession:
                 return
             self._show_status("Listening... (recording)")
             recording_path = record_audio()
+            if recording_path == NO_SPEECH_MESSAGE:
+                print(f"{YELLOW}{NO_SPEECH_MESSAGE}{RESET}\n")
+                return
             if recording_path.startswith("Error"):
                 print(f"{RED}Jarvis error:{RESET} {recording_path}\n")
                 return
@@ -242,7 +245,7 @@ class TerminalSession:
                 self.wake_playback_interrupt.set()
                 print("🎤 Wake word detected, interrupting playback...")
                 return
-        print("🎤 Wake word detected, listening...")
+        print("🎤 Wake word detected, listening...", flush=True)
         with self.wake_lock:
             listener = self.wake_listener
         if listener is not None:
@@ -256,6 +259,10 @@ class TerminalSession:
                 return
 
             recording_path = record_audio()
+            if recording_path == NO_SPEECH_MESSAGE:
+                print(f"{YELLOW}{NO_SPEECH_MESSAGE}{RESET}\n")
+                self.tasks.put((WAKE_RESTART_TASK, None))
+                return
             if recording_path.startswith("Error"):
                 print(f"{RED}Jarvis error:{RESET} {recording_path}\n")
                 self.tasks.put((WAKE_RESTART_TASK, None))
@@ -363,13 +370,13 @@ def main():
     # be usable, so invalid startup state is reported as configuration errors.
     global Agent, AgentCancelled, BrowserExecutor
     global VOICE_DEPENDENCY_ERROR, VOICE_ENABLED
-    global cleanup_audio_file, play_audio, record_audio
+    global cleanup_audio_file, play_audio, record_audio, NO_SPEECH_MESSAGE
     global synthesize_speech, transcribe_audio
     global WakeWordListener, WakeWordListenerError
     from agent import Agent, AgentCancelled
     from browser_executor import BrowserExecutor
     from config import VOICE_DEPENDENCY_ERROR, VOICE_ENABLED
-    from voice_io import cleanup_audio_file, play_audio, record_audio
+    from voice_io import NO_SPEECH_MESSAGE, cleanup_audio_file, play_audio, record_audio
     from voice_provider import synthesize_speech, transcribe_audio
     from voice_wakeword import WakeWordListener, WakeWordListenerError
 

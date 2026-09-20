@@ -101,10 +101,12 @@ Voice behavior can be configured in `.env`:
 ```env
 # Speech-to-text model
 JARVIS_STT_MODEL=whisper-large-v3
+# ISO-639-1 language code matching the language spoken to Jarvis
+JARVIS_STT_LANGUAGE=en
 
-# Text-to-speech model and voice
-JARVIS_TTS_MODEL=playai-tts
-JARVIS_TTS_VOICE=Fritz-PlayAI
+# Orpheus English text-to-speech model and voice
+JARVIS_TTS_MODEL=canopylabs/orpheus-v1-english
+JARVIS_TTS_VOICE=autumn
 ```
 
 ## Wake-word mode (experimental, opt-in)

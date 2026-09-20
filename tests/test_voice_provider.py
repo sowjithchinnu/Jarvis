@@ -37,6 +37,10 @@ class VoiceProviderTests(unittest.TestCase):
 
         self.assertEqual(result, "What is the weather today?")
         client.audio.transcriptions.create.assert_called_once()
+        self.assertEqual(
+            client.audio.transcriptions.create.call_args.kwargs["language"],
+            "en",
+        )
 
     @patch("voice_provider._client")
     def test_transcribe_audio_returns_error_for_api_failure(self, get_client):

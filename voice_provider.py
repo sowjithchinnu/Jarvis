@@ -15,6 +15,7 @@ from openai import OpenAI
 from config import (
     API_BASE_URL,
     API_KEY,
+    STT_LANGUAGE,
     STT_MODEL,
     TTS_MODEL as CONFIG_TTS_MODEL,
     TTS_VOICE as CONFIG_TTS_VOICE,
@@ -53,6 +54,7 @@ def transcribe_audio(file_path: str) -> str:
             lambda: client.audio.transcriptions.create(
                 model=TRANSCRIPTION_MODEL,
                 file=Path(file_path),
+                language=STT_LANGUAGE,
                 timeout=AUDIO_REQUEST_TIMEOUT,
             ),
             logger=logger,

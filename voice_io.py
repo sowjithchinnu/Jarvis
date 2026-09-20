@@ -7,6 +7,7 @@ wake-word support are deliberately separate, future scope.
 from __future__ import annotations
 
 import os
+import logging
 import tempfile
 import threading
 import time
@@ -19,7 +20,13 @@ CHANNELS = 1
 CHUNK_SIZE = 1_024
 SILENCE_THRESHOLD = 0.01
 SILENCE_SECONDS = 1.5
+INITIAL_SILENCE_SECONDS = 3.0
+MIN_RECORDING_SECONDS = 0.9
+RECORDING_START_DELAY_SECONDS = 0.35
+NO_SPEECH_MESSAGE = "Didn't catch that - try again"
 TEMP_FILE_PREFIX = "jarvis_audio_"
+
+logger = logging.getLogger(__name__)
 
 
 def _is_owned_temporary_file(file_path: str) -> bool:
@@ -51,9 +58,10 @@ def cleanup_audio_file(file_path: str) -> None:
 def record_audio(max_seconds: int = 15) -> str:
     """Record microphone input and return the path to a temporary WAV file.
 
-    Recording ends at ``max_seconds`` or after approximately 1.5 seconds of
-    silence following detected speech, whichever comes first. Errors are
-    returned as strings so callers never need to catch audio-device failures.
+    Recording ends at ``max_seconds`` or after silence following detected
+    speech, whichever comes first. A longer initial grace period allows the
+    user to pause before speaking, and very short near-silent recordings are
+    discarded instead of being sent for transcription.
     """
     if isinstance(max_seconds, bool) or not isinstance(max_seconds, int):
         return "Error recording audio: max_seconds must be a positive integer."
@@ -78,6 +86,8 @@ def record_audio(max_seconds: int = 15) -> str:
             dtype="float32",
             blocksize=CHUNK_SIZE,
         ) as stream:
+            time.sleep(RECORDING_START_DELAY_SECONDS)
+            capture_started_at = time.monotonic()
             while time.monotonic() < deadline:
                 remaining = deadline - time.monotonic()
                 frame_count = max(1, min(CHUNK_SIZE, int(remaining * SAMPLE_RATE)))
@@ -86,6 +96,7 @@ def record_audio(max_seconds: int = 15) -> str:
                 if samples.size == 0:
                     continue
                 chunks.append(samples.reshape(-1, CHANNELS))
+                captured_duration = sum(chunk.shape[0] for chunk in chunks) / SAMPLE_RATE
 
                 rms = float(np.sqrt(np.mean(np.square(samples), dtype=np.float64)))
                 if rms >= SILENCE_THRESHOLD:
@@ -94,10 +105,30 @@ def record_audio(max_seconds: int = 15) -> str:
                 elif speech_started:
                     if silence_started_at is None:
                         silence_started_at = time.monotonic()
+                    elif (
+                        captured_duration >= MIN_RECORDING_SECONDS
+                        and time.monotonic() - silence_started_at >= SILENCE_SECONDS
+                    ):
+                        break
+                elif time.monotonic() - capture_started_at >= INITIAL_SILENCE_SECONDS:
+                    if silence_started_at is None:
+                        silence_started_at = time.monotonic()
                     elif time.monotonic() - silence_started_at >= SILENCE_SECONDS:
                         break
 
         audio = np.concatenate(chunks, axis=0) if chunks else np.empty((0, CHANNELS))
+        actual_duration = len(audio) / SAMPLE_RATE
+        floor_reached = actual_duration >= MIN_RECORDING_SECONDS
+        duration_message = (
+            f"Voice recording duration: {actual_duration:.2f}s; "
+            f"minimum-duration floor {'reached' if floor_reached else 'not reached'}."
+        )
+        logger.info(duration_message)
+        if os.environ.get("JARVIS_WAKEWORD_DEBUG") == "1":
+            print(duration_message, flush=True)
+        if not speech_started:
+            return NO_SPEECH_MESSAGE
+
         pcm_audio = np.clip(audio, -1.0, 1.0)
         pcm_audio = (pcm_audio * 32767).astype(np.int16)
 

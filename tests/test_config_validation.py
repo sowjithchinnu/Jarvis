@@ -11,7 +11,7 @@ class ConfigValidationTests(unittest.TestCase):
         self.download_dir = Path(tempfile.mkdtemp())
         self.defaults = {
             "API_KEY": "test-key",
-            "TTS_VOICE": "Fritz-PlayAI",
+            "TTS_VOICE": "autumn",
             "VOICE_ENABLED": True,
             "JARVIS_WAKEWORD_MODEL": "hey_jarvis",
             "JARVIS_WAKEWORD_THRESHOLD": 0.5,

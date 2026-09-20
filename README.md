@@ -18,6 +18,7 @@ Add your Groq key to `.env`:
 ```env
 GROQ_API_KEY=your-key-here
 JARVIS_MODEL=openai/gpt-oss-120b
+JARVIS_DEFAULT_BROWSER=chrome
 ```
 
 `JARVIS_MODEL` is optional and defaults to `openai/gpt-oss-120b`. Keep `.env`
@@ -30,17 +31,24 @@ Run Jarvis:
 .venv/bin/python main.py
 ```
 
-At startup, Jarvis asks whether you want Browser tasks, Desktop tasks, or Both.
-Only Browser and Both modes ask whether to use Google Chrome or Brave. Browser
-sessions are separate and do not attach to existing tabs or profiles.
+Jarvis starts ready for browser and OS requests immediately; there is no startup
+mode-selection menu. The browser is launched lazily on the first browser
+request, using `JARVIS_DEFAULT_BROWSER` (`chrome` or `brave`, default `chrome`),
+and sessions are separate from existing tabs or profiles.
 
-Type `/quit` or `/exit` to stop Jarvis.
-Type `/cancel` while a request is running to cancel it. The current network or
-browser operation may finish first, then Jarvis stops before the next step.
-Type `/voice` to record one voice request, review its transcription, and hear
-Jarvis's reply. Risky-action confirmations still require terminal keyboard input.
-Type `/undo` to reverse the most recent reversible navigation or field change.
-Submitted forms and other external side effects cannot be undone.
+Commands are available in long and short forms:
+
+- `/c` or `/cancel` — stop the current request.
+- `/v` or `/voice` — make a one-shot voice request.
+- `/w on` or `/wake-on` — enable wake-word listening; `/w off` or `/wake-off` disables it.
+- `/mem list|forget|clear` or `/memory list|forget|clear` — manage remembered facts.
+- `/mac save|run|list|delete` or `/macro save|run|list|delete` — manage macros.
+- `/undo` — undo the most recent reversible browser action.
+- `/?`, `/h`, or `/help` — show the command list.
+- `/q`, `/quit`, or `/exit` — close Jarvis.
+
+Risky-action confirmations still require terminal keyboard input. The current
+network or browser operation may finish before `/cancel` takes effect.
 
 ## Memory and macros
 

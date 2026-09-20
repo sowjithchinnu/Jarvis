@@ -26,52 +26,21 @@ VOICE_TASK = object()
 WAKE_TRANSCRIPT_TASK = "wake_transcript"
 WAKE_RESTART_TASK = "wake_restart"
 
-
-def choose_browser():
-    print(f"{CYAN}Choose your browser:{RESET}")
-    print("1. Google Chrome")
-    print("2. Brave Browser")
-    print("q. Exit")
-    while True:
-        try:
-            choice = input("Browser [1/2/q]: ").strip().lower()
-        except EOFError:
-            return None
-        if choice == "1":
-            return "chrome"
-        if choice == "2":
-            return "brave"
-        if choice in {"q", "quit", "exit"}:
-            return None
-        print(f"{YELLOW}Please choose 1, 2, or q.{RESET}")
-
-
-def choose_mode():
-    print(f"{CYAN}What would you like Jarvis to use?{RESET}")
-    print("1. Browser tasks")
-    print("2. Desktop tasks")
-    print("3. Both")
-    print("q. Exit")
-    while True:
-        try:
-            choice = input("Mode [1/2/3/q]: ").strip().lower()
-        except EOFError:
-            return None
-        if choice == "1":
-            return "browser"
-        if choice == "2":
-            return "desktop"
-        if choice == "3":
-            return "both"
-        if choice in {"q", "quit", "exit"}:
-            return None
-        print(f"{YELLOW}Please choose 1, 2, 3, or q.{RESET}")
+HELP_TEXT = """Available commands:
+/c, /cancel                 stop the current request
+/v, /voice                  one-shot voice request
+/w on|off, /wake-on|/wake-off|/wakeword-on|/wakeword-off   toggle wake-word listening
+/mem|/memory list|forget|clear   manage remembered facts
+/mac|/macro save|run|list|delete   manage request macros
+/undo                       undo the last reversible browser action
+/? /h /help                 show this help
+/q, /quit, /exit            close Jarvis"""
 
 
 class TerminalSession:
-    def __init__(self, mode, browser_name=None):
-        self.mode = mode
+    def __init__(self, browser_name):
         self.browser_name = browser_name
+        self._browser = None
         self.tasks = queue.Queue()
         self.cancel_event = threading.Event()
         self.stop_event = threading.Event()
@@ -89,6 +58,16 @@ class TerminalSession:
 
     def _show_status(self, text):
         print(f"{DIM}• {text}{RESET}")
+
+    def _get_browser(self):
+        if self._browser is None:
+            browser_label = self.browser_name.title()
+            print(f"{DIM}Launching {browser_label} for browser tasks...{RESET}")
+            self._browser = BrowserExecutor(
+                browser_name=self.browser_name,
+                headless=False,
+            )
+        return self._browser
 
     def _confirm(self, description, require_phrase=False):
         request = {
@@ -112,15 +91,13 @@ class TerminalSession:
         return request["approved"] and not self.cancel_event.is_set()
 
     def _worker(self):
-        browser = None
         agent = None
         try:
-            if self.mode in {"browser", "both"}:
-                browser = BrowserExecutor(browser_name=self.browser_name, headless=False)
             agent = Agent(
-                browser,
+                None,
                 confirm_callback=self._confirm,
                 on_status=self._show_status,
+                browser_factory=self._get_browser,
                 cancel_event=self.cancel_event,
             )
             while not self.stop_event.is_set():
@@ -161,8 +138,8 @@ class TerminalSession:
         finally:
             if agent is not None:
                 agent.close()
-            elif browser is not None:
-                browser.close()
+            elif self._browser is not None:
+                self._browser.close()
 
     def _run_voice_turn(self, agent):
         recording_path = None
@@ -368,14 +345,14 @@ def main():
 
     # Delay optional/heavy application imports until configuration is known to
     # be usable, so invalid startup state is reported as configuration errors.
-    global Agent, AgentCancelled, BrowserExecutor
+    global Agent, AgentCancelled, BrowserExecutor, JARVIS_DEFAULT_BROWSER
     global VOICE_DEPENDENCY_ERROR, VOICE_ENABLED
     global cleanup_audio_file, play_audio, record_audio, NO_SPEECH_MESSAGE
     global synthesize_speech, transcribe_audio
     global WakeWordListener, WakeWordListenerError
     from agent import Agent, AgentCancelled
     from browser_executor import BrowserExecutor
-    from config import VOICE_DEPENDENCY_ERROR, VOICE_ENABLED
+    from config import JARVIS_DEFAULT_BROWSER, VOICE_DEPENDENCY_ERROR, VOICE_ENABLED
     from voice_io import NO_SPEECH_MESSAGE, cleanup_audio_file, play_audio, record_audio
     from voice_provider import synthesize_speech, transcribe_audio
     from voice_wakeword import WakeWordListener, WakeWordListenerError
@@ -385,31 +362,9 @@ def main():
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    print(f"{CYAN}╭─ Jarvis ─────────────────────────────────╮{RESET}")
-    print(f"{CYAN}│ Terminal Jarvis                          │{RESET}")
-    print(f"{CYAN}│ /cancel stops the current request       │{RESET}")
-    print(f"{CYAN}│ /voice records a one-shot voice request │{RESET}")
-    print(f"{CYAN}│ /wake-on enables wake-word listening    │{RESET}")
-    print(f"{CYAN}│ /wake-off disables wake-word listening  │{RESET}")
-    print(f"{CYAN}│ /memory list|forget|clear manages memory │{RESET}")
-    print(f"{CYAN}│ /macro save|run|list|delete manages macros│{RESET}")
-    print(f"{CYAN}│ Spoken confirmations unsupported; use  │{RESET}")
-    print(f"{CYAN}│ the keyboard for risky actions          │{RESET}")
-    print(f"{CYAN}│ /quit or /exit closes Jarvis            │{RESET}")
-    print(f"{CYAN}╰─────────────────────────────────────────╯{RESET}\n")
+    print("Type /help for commands.\n")
 
-    mode = choose_mode()
-    if mode is None:
-        print(f"{DIM}Goodbye.{RESET}")
-        return
-    browser_name = None
-    if mode in {"browser", "both"}:
-        browser_name = choose_browser()
-        if browser_name is None:
-            print(f"{DIM}Goodbye.{RESET}")
-            return
-
-    session = TerminalSession(mode, browser_name)
+    session = TerminalSession(JARVIS_DEFAULT_BROWSER)
     session.start()
     last_typed_request = None
     try:
@@ -422,16 +377,19 @@ def main():
             if not user_text:
                 continue
             command = user_text.lower()
-            if command in {"/quit", "/exit"}:
+            if command in {"/q", "/quit", "/exit"}:
                 break
-            if command == "/cancel":
+            if command in {"/?", "/h", "/help"}:
+                print(f"{DIM}{HELP_TEXT}{RESET}\n")
+                continue
+            if command in {"/c", "/cancel"}:
                 session.cancel()
                 print(f"{YELLOW}Jarvis:{RESET} Cancellation requested.\n")
                 continue
-            if command in {"/wake-on", "/wakeword-on"}:
+            if command in {"/w on", "/wake-on", "/wakeword-on"}:
                 session.enable_wake_word()
                 continue
-            if command in {"/wake-off", "/wakeword-off"}:
+            if command in {"/w off", "/wake-off", "/wakeword-off"}:
                 session.disable_wake_word()
                 continue
             with session.confirmation_lock:
@@ -447,7 +405,12 @@ def main():
                     confirmation["approved"] = command in {"y", "yes"}
                 confirmation["event"].set()
                 continue
-            if command == "/memory" or command.startswith("/memory "):
+            if (
+                command == "/memory"
+                or command.startswith("/memory ")
+                or command == "/mem"
+                or command.startswith("/mem ")
+            ):
                 memory_parts = user_text.split(maxsplit=2)
                 subcommand = memory_parts[1].lower() if len(memory_parts) > 1 else ""
                 if subcommand == "list" and len(memory_parts) == 2:
@@ -472,7 +435,12 @@ def main():
                         "/memory forget <text> | /memory clear\n"
                     )
                 continue
-            if command == "/macro" or command.startswith("/macro "):
+            if (
+                command == "/macro"
+                or command.startswith("/macro ")
+                or command == "/mac"
+                or command.startswith("/mac ")
+            ):
                 macro_parts = user_text.split(maxsplit=2)
                 subcommand = macro_parts[1].lower() if len(macro_parts) > 1 else ""
                 if subcommand == "save" and len(macro_parts) == 3:
@@ -506,7 +474,7 @@ def main():
                         "/macro run <name> | /macro list | /macro delete <name>\n"
                     )
                 continue
-            if command == "/voice":
+            if command in {"/v", "/voice"}:
                 if not VOICE_ENABLED:
                     print(f"{RED}Jarvis error:{RESET} {VOICE_DEPENDENCY_ERROR}\n")
                 else:

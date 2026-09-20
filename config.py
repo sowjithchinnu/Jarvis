@@ -20,6 +20,7 @@ DEFAULT_MODEL = "openai/gpt-oss-120b"
 
 # Model used for the agent loop. Change as needed.
 MODEL_NAME = os.environ.get("JARVIS_MODEL", DEFAULT_MODEL)
+JARVIS_DEFAULT_BROWSER = os.environ.get("JARVIS_DEFAULT_BROWSER", "chrome").strip().lower()
 
 # Voice provider settings. These can be changed without editing Python code.
 STT_MODEL = os.environ.get("JARVIS_STT_MODEL", "whisper-large-v3")
@@ -96,6 +97,9 @@ def validate_config():
 
     if not isinstance(API_KEY, str) or not API_KEY.strip():
         errors.append("GROQ_API_KEY must be present and non-empty.")
+
+    if JARVIS_DEFAULT_BROWSER not in {"chrome", "brave"}:
+        errors.append("JARVIS_DEFAULT_BROWSER must be either 'chrome' or 'brave'.")
 
     if VOICE_ENABLED and TTS_VOICE not in ORPHEUS_VALID_VOICES:
         errors.append(

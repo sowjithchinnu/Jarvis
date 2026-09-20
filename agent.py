@@ -483,8 +483,11 @@ class Agent:
             if name in OS_TOOL_NAMES:
                 executor = self.os_executor
             else:
-                if self.browser is None:
-                    return "This browser action is unavailable in Desktop mode. Restart Jarvis in Browser or Both mode."
+                try:
+                    executor = self._get_browser()
+                except Exception as error:
+                    logger.exception("Lazy browser startup failed")
+                    return f"The {name} action could not start the browser: {error}"
                 if not self._ensure_browser_alive():
                     logger.error("Browser recovery unavailable for tool: %s", name)
                     return (

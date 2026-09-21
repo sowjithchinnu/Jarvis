@@ -40,7 +40,7 @@ Commands are available in long and short forms:
 
 - `/c` or `/cancel` — stop the current request.
 - `/v` or `/voice` — make a one-shot voice request.
-- `/w on` or `/wake-on` — enable wake-word listening; `/w off` or `/wake-off` disables it.
+- `/w on` or `/wake-on` — enable wake-word listening; `/w off` or `/wake-off` disables it. Listening starts automatically by default.
 - `/mem list|forget|clear` or `/memory list|forget|clear` — manage remembered facts.
 - `/mac save|run|list|delete` or `/macro save|run|list|delete` — manage macros.
 - `/undo` — undo the most recent reversible browser action.
@@ -119,9 +119,11 @@ JARVIS_TTS_VOICE=autumn
 
 ## Wake-word mode (experimental, opt-in)
 
-Wake-word listening is off by default. Run `/wake-on` to start listening with
-openWakeWord's standard pretrained `hey_jarvis` model for the phrase “hey
-jarvis”; run `/wake-off` to stop it. The feature is experimental and opt-in.
+Wake-word listening starts automatically by default with openWakeWord's
+standard pretrained `hey_jarvis` model for the phrase “hey jarvis”. Run
+`/wake-off` to pause it for privacy, and `/wake-on` to resume listening. Set
+`JARVIS_AUTOSTART_WAKEWORD=false` to restore opt-in behavior at launch. The
+feature is experimental.
 
 Wake-word detection is fully local: microphone audio used for detection is
 processed by openWakeWord on this machine and is not sent over the network.

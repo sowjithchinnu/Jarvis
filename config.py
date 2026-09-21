@@ -21,6 +21,8 @@ DEFAULT_MODEL = "openai/gpt-oss-120b"
 # Model used for the agent loop. Change as needed.
 MODEL_NAME = os.environ.get("JARVIS_MODEL", DEFAULT_MODEL)
 JARVIS_DEFAULT_BROWSER = os.environ.get("JARVIS_DEFAULT_BROWSER", "chrome").strip().lower()
+_autostart_wakeword_value = os.environ.get("JARVIS_AUTOSTART_WAKEWORD", "true").strip().lower()
+JARVIS_AUTOSTART_WAKEWORD = _autostart_wakeword_value == "true"
 
 # Voice provider settings. These can be changed without editing Python code.
 STT_MODEL = os.environ.get("JARVIS_STT_MODEL", "whisper-large-v3")
@@ -100,6 +102,9 @@ def validate_config():
 
     if JARVIS_DEFAULT_BROWSER not in {"chrome", "brave"}:
         errors.append("JARVIS_DEFAULT_BROWSER must be either 'chrome' or 'brave'.")
+
+    if _autostart_wakeword_value not in {"true", "false"}:
+        errors.append("JARVIS_AUTOSTART_WAKEWORD must be either 'true' or 'false'.")
 
     if VOICE_ENABLED and TTS_VOICE not in ORPHEUS_VALID_VOICES:
         errors.append(

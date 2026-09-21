@@ -29,7 +29,7 @@ WAKE_RESTART_TASK = "wake_restart"
 HELP_TEXT = """Available commands:
 /c, /cancel                 stop the current request
 /v, /voice                  one-shot voice request
-/w on|off, /wake-on|/wake-off|/wakeword-on|/wakeword-off   toggle wake-word listening
+/w on|off, /wake-on|/wake-off|/wakeword-on|/wakeword-off   toggle wake-word listening (on by default)
 /mem|/memory list|forget|clear   manage remembered facts
 /mac|/macro save|run|list|delete   manage request macros
 /undo                       undo the last reversible browser action
@@ -280,7 +280,7 @@ class TerminalSession:
             self.wake_playback_interrupt = threading.Event()
         try:
             listener.start()
-            print(f"{GREEN}Jarvis:{RESET} Wake-word listening enabled.\n")
+            print(f"{GREEN}🎤 Listening for 'Hey Jarvis'...{RESET}\n")
         except WakeWordListenerError:
             with self.wake_lock:
                 self.wake_enabled = False
@@ -346,13 +346,19 @@ def main():
     # Delay optional/heavy application imports until configuration is known to
     # be usable, so invalid startup state is reported as configuration errors.
     global Agent, AgentCancelled, BrowserExecutor, JARVIS_DEFAULT_BROWSER
+    global JARVIS_AUTOSTART_WAKEWORD
     global VOICE_DEPENDENCY_ERROR, VOICE_ENABLED
     global cleanup_audio_file, play_audio, record_audio, NO_SPEECH_MESSAGE
     global synthesize_speech, transcribe_audio
     global WakeWordListener, WakeWordListenerError
     from agent import Agent, AgentCancelled
     from browser_executor import BrowserExecutor
-    from config import JARVIS_DEFAULT_BROWSER, VOICE_DEPENDENCY_ERROR, VOICE_ENABLED
+    from config import (
+        JARVIS_AUTOSTART_WAKEWORD,
+        JARVIS_DEFAULT_BROWSER,
+        VOICE_DEPENDENCY_ERROR,
+        VOICE_ENABLED,
+    )
     from voice_io import NO_SPEECH_MESSAGE, cleanup_audio_file, play_audio, record_audio
     from voice_provider import synthesize_speech, transcribe_audio
     from voice_wakeword import WakeWordListener, WakeWordListenerError
@@ -366,6 +372,8 @@ def main():
 
     session = TerminalSession(JARVIS_DEFAULT_BROWSER)
     session.start()
+    if JARVIS_AUTOSTART_WAKEWORD:
+        session.enable_wake_word()
     last_typed_request = None
     try:
         while True:

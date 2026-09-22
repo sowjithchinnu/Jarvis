@@ -29,6 +29,8 @@ WAKE_RESTART_TASK = "wake_restart"
 HELP_TEXT = """Available commands:
 /c, /cancel                 stop the current request
 /v, /voice                  one-shot voice request
+/vs /voice-set <name>       switch the active TTS voice
+/vl /voice-list             list available TTS voices
 /w on|off, /wake-on|/wake-off|/wakeword-on|/wakeword-off   toggle wake-word listening (on by default)
 /mem|/memory list|forget|clear   manage remembered facts
 /mac|/macro save|run|list|delete   manage request macros
@@ -349,7 +351,8 @@ def main():
     global JARVIS_AUTOSTART_WAKEWORD
     global VOICE_DEPENDENCY_ERROR, VOICE_ENABLED
     global cleanup_audio_file, play_audio, record_audio, NO_SPEECH_MESSAGE
-    global synthesize_speech, transcribe_audio
+    global synthesize_speech, transcribe_audio, set_tts_voice, get_tts_voice
+    global VALID_TTS_VOICES
     global WakeWordListener, WakeWordListenerError
     from agent import Agent, AgentCancelled
     from browser_executor import BrowserExecutor
@@ -360,7 +363,13 @@ def main():
         VOICE_ENABLED,
     )
     from voice_io import NO_SPEECH_MESSAGE, cleanup_audio_file, play_audio, record_audio
-    from voice_provider import synthesize_speech, transcribe_audio
+    from voice_provider import (
+        VALID_TTS_VOICES,
+        get_tts_voice,
+        set_tts_voice,
+        synthesize_speech,
+        transcribe_audio,
+    )
     from voice_wakeword import WakeWordListener, WakeWordListenerError
 
     logging.basicConfig(
@@ -399,6 +408,25 @@ def main():
                 continue
             if command in {"/w off", "/wake-off", "/wakeword-off"}:
                 session.disable_wake_word()
+                continue
+            if command in {"/vl", "/voice-list"}:
+                print("Available voices:")
+                for voice in VALID_TTS_VOICES:
+                    marker = " (active)" if voice == get_tts_voice() else ""
+                    print(f"- {voice}{marker}")
+                print()
+                continue
+            if command == "/vs" or command.startswith("/vs ") or command == "/voice-set" or command.startswith("/voice-set "):
+                voice_parts = user_text.split(maxsplit=1)
+                if len(voice_parts) != 2 or not voice_parts[1].strip():
+                    print(f"{YELLOW}Usage:{RESET} /voice-set <name>\n")
+                else:
+                    voice_name = voice_parts[1].strip().lower()
+                    try:
+                        set_tts_voice(voice_name)
+                        print(f"{DIM}Active TTS voice: {voice_name}.{RESET}\n")
+                    except ValueError as error:
+                        print(f"{YELLOW}{error}{RESET}\n")
                 continue
             with session.confirmation_lock:
                 confirmation = session.confirmation

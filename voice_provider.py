@@ -17,6 +17,7 @@ from config import (
     API_KEY,
     STT_LANGUAGE,
     STT_MODEL,
+    ORPHEUS_VALID_VOICES,
     TTS_MODEL as CONFIG_TTS_MODEL,
     TTS_VOICE as CONFIG_TTS_VOICE,
 )
@@ -30,8 +31,24 @@ logger = logging.getLogger(__name__)
 TRANSCRIPTION_MODEL = STT_MODEL
 TTS_MODEL = CONFIG_TTS_MODEL
 TTS_VOICE = CONFIG_TTS_VOICE
+VALID_TTS_VOICES = tuple(sorted(ORPHEUS_VALID_VOICES))
+CURRENT_TTS_VOICE = CONFIG_TTS_VOICE
 AUDIO_REQUEST_TIMEOUT = 20
 TEMP_FILE_PREFIX = "jarvis_audio_"
+
+
+def set_tts_voice(voice: str) -> None:
+    """Set the active session voice after validating it against Orpheus."""
+    if voice not in ORPHEUS_VALID_VOICES:
+        valid = ", ".join(VALID_TTS_VOICES)
+        raise ValueError(f"Unknown TTS voice '{voice}'. Valid voices: {valid}.")
+    global CURRENT_TTS_VOICE
+    CURRENT_TTS_VOICE = voice
+
+
+def get_tts_voice() -> str:
+    """Return the voice currently used for speech synthesis."""
+    return CURRENT_TTS_VOICE
 
 
 def _client() -> OpenAI:
@@ -76,7 +93,7 @@ def transcribe_audio(file_path: str) -> str:
 
 
 def synthesize_speech(text: str) -> str:
-    """Synthesize speech with Groq PlayAI and return a temporary audio path."""
+    """Synthesize speech with Groq Orpheus and return a temporary audio path."""
     if not isinstance(text, str) or not text.strip():
         return "Error synthesizing speech: text must be a non-empty string."
 
@@ -86,7 +103,7 @@ def synthesize_speech(text: str) -> str:
         response = request_with_retry(
             lambda: client.audio.speech.create(
                 model=TTS_MODEL,
-                voice=TTS_VOICE,
+                voice=CURRENT_TTS_VOICE,
                 input=text,
                 response_format="wav",
                 timeout=AUDIO_REQUEST_TIMEOUT,

@@ -4,7 +4,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from voice_provider import synthesize_speech, transcribe_audio
+from voice_provider import set_tts_voice, synthesize_speech, transcribe_audio
 
 
 class FakeAPIError(Exception):
@@ -86,6 +86,30 @@ class VoiceProviderTests(unittest.TestCase):
         finally:
             if isinstance(output_path, str) and os.path.isfile(output_path):
                 os.unlink(output_path)
+
+    @patch("voice_provider._client")
+    def test_switching_voice_changes_next_synthesis_request(self, get_client):
+        client = self._client()
+        response = Mock()
+        response.write_to_file.side_effect = lambda path: open(path, "wb").close()
+        client.audio.speech.create.return_value = response
+        get_client.return_value = client
+
+        output_paths = []
+        try:
+            set_tts_voice("autumn")
+            output_paths.append(synthesize_speech("First voice"))
+            set_tts_voice("diana")
+            output_paths.append(synthesize_speech("Second voice"))
+
+            calls = client.audio.speech.create.call_args_list
+            self.assertEqual(calls[0].kwargs["voice"], "autumn")
+            self.assertEqual(calls[1].kwargs["voice"], "diana")
+        finally:
+            set_tts_voice("autumn")
+            for output_path in output_paths:
+                if isinstance(output_path, str) and os.path.isfile(output_path):
+                    os.unlink(output_path)
 
     @patch("voice_provider._client")
     def test_synthesize_speech_returns_error_for_api_failure(self, get_client):

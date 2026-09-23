@@ -81,6 +81,9 @@ ALLOWED_APPS = {
 
 PROJECT_DIR = Path(__file__).resolve().parent
 DOWNLOAD_DIR = Path(os.environ.get("DOWNLOAD_DIR", PROJECT_DIR / "downloads"))
+# Read-only file tools are limited to these user-facing folders. Keep writes
+# and deletes as deliberately separate, higher-risk decisions.
+ALLOWED_FILE_ROOTS = [Path.home() / "Documents", Path.home() / "Desktop"]
 
 
 class ConfigValidationError(RuntimeError):

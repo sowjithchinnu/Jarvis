@@ -181,13 +181,31 @@ Jarvis also provides these local OS capabilities:
 - `get_brightness` and `set_brightness` read and change screen brightness.
   Brightness changes are reversible and do not require confirmation; levels
   must be integers from 0 through 100.
+- `send_notification` displays a native desktop notification through `plyer`.
+  It is LOW risk and informational; title and message lengths are bounded.
+- `list_directory` and `read_text_file` are LOW-risk, read-only file tools.
+  They can access only paths inside `ALLOWED_FILE_ROOTS` in `config.py`, which
+  defaults to the user's `Documents` and `Desktop` folders. To change the
+  scope, edit that list deliberately, for example:
 
-Clipboard support uses `pyperclip`. System status uses `psutil`, and screen
-brightness uses `screen-brightness-control`. They are included in
+  ```python
+  ALLOWED_FILE_ROOTS = [Path.home() / "Documents", Path.home() / "Desktop"]
+  ```
+
+  Path traversal and symlink escapes are rejected. Credential-like files are
+  always blocked, including `.env` files, `.pem`, `.key`, `.ppk`, `.p12`,
+  `.pfx`, `.crt`, `.cer`, SSH private-key names such as `id_rsa`, and common
+  `credentials` files. File reading is capped at 2 MB and returned text is
+  capped at 4,000 characters.
+
+Clipboard support uses `pyperclip`, desktop notifications use `plyer`, system
+status uses `psutil`, and screen brightness uses `screen-brightness-control`.
+They are included in
 `requirements.txt`:
 
 ```text
 pyperclip>=1.8.2
+plyer>=2.1.0
 psutil>=5.9.0
 screen-brightness-control>=0.24.2
 ```

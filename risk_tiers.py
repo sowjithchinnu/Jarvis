@@ -38,6 +38,9 @@ RISK_TIERS = {
     # Application launches are MEDIUM because they spawn a real running
     # process rather than merely toggling a reversible system value.
     "open_application": MEDIUM,
+    "send_notification": LOW,
+    "list_directory": LOW,
+    "read_text_file": LOW,
     "remember_fact": LOW,
     "list_facts": LOW,
     "forget_fact": LOW,
@@ -54,6 +57,12 @@ TOOL_ARG_SCHEMAS = {
     "get_brightness": {"required": set(), "allowed": set()},
     "set_brightness": {"required": {"level"}, "allowed": {"level"}},
     "open_application": {"required": {"app_name"}, "allowed": {"app_name"}},
+    "send_notification": {
+        "required": {"title", "message"},
+        "allowed": {"title", "message"},
+    },
+    "list_directory": {"required": {"path"}, "allowed": {"path"}},
+    "read_text_file": {"required": {"path"}, "allowed": {"path"}},
     "get_last_download_info": {"required": set(), "allowed": set()},
     "remember_fact": {"required": {"text"}, "allowed": {"text"}},
     "list_facts": {"required": set(), "allowed": set()},

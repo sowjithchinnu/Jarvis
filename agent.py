@@ -68,6 +68,13 @@ Rules:
 - Limited OS access can launch applications only from a fixed whitelist.
   Never invent an application name or provide an arbitrary path; if an app
   name has not been confirmed as available, ask the user instead.
+- You can send native desktop notifications with send_notification when the
+  user asks for one.
+- You can list directories and read text files with list_directory and
+  read_text_file. File access is read-only and restricted to the whitelisted
+  ALLOWED_FILE_ROOTS folders. Never attempt to read or reference paths outside
+  that scope or try nearby paths; tell the user plainly when a requested path
+  is outside the allowed scope.
 - You can remember user-provided preferences and task context across sessions
   with remember_fact when the user explicitly asks you to remember something.
   Do not remember facts unprompted. Never remember passwords, credentials, API
@@ -327,6 +334,48 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "send_notification",
+            "description": "Display a native desktop notification for the user.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "message": {"type": "string"},
+                },
+                "required": ["title", "message"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_directory",
+            "description": "List files and folders in an allowed directory.",
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_text_file",
+            "description": "Read a text file inside the allowed file roots, subject to safety and size limits.",
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+                "additionalProperties": False,
+            },
+        },
+    },
 ]
 
 OS_TOOL_NAMES = {
@@ -340,6 +389,9 @@ OS_TOOL_NAMES = {
     "open_application",
     "get_brightness",
     "set_brightness",
+    "send_notification",
+    "list_directory",
+    "read_text_file",
 }
 MEMORY_TOOL_NAMES = {"remember_fact", "list_facts", "forget_fact"}
 SECRET_MARKERS = (
@@ -589,6 +641,9 @@ class Agent:
             "set_clipboard": {"text"},
             "open_application": {"app_name"},
             "set_brightness": {"level"},
+            "send_notification": {"title", "message"},
+            "list_directory": {"path"},
+            "read_text_file": {"path"},
             "remember_fact": {"text"},
             "forget_fact": {"match_text"},
         }.get(name, set())
@@ -617,6 +672,14 @@ class Agent:
 
         if name == "set_clipboard" and not isinstance(args["text"], str):
             return "Invalid text. Expected a string."
+
+        if name == "send_notification":
+            if not isinstance(args["title"], str) or not isinstance(args["message"], str):
+                return "Invalid notification. Expected string title and message."
+
+        if name in {"list_directory", "read_text_file"}:
+            if not isinstance(args["path"], str) or not args["path"].strip():
+                return "Invalid path. Expected a non-empty string."
 
         if name == "open_application":
             app_name = args["app_name"]

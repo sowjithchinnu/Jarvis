@@ -1,7 +1,8 @@
 """Small, whitelisted operating-system actions for Jarvis.
 
-This module intentionally exposes only screenshots, clipboard, system-volume
-controls, system status, and launches for explicitly whitelisted applications.
+This module intentionally exposes only screenshots, clipboard, read-only file
+inspection, system-volume controls, system status, and launches for explicitly
+whitelisted applications.
 Clipboard access reads and writes shared OS state and should be treated as
 potentially sensitive, despite being LOW risk operationally. This module is
 not general-purpose OS control and does not simulate keyboard or mouse input.
@@ -17,7 +18,7 @@ from pathlib import Path
 from typing import Final
 
 from PIL import ImageGrab
-from config import ALLOWED_APPS
+from config import ALLOWED_APPS, ALLOWED_FILE_ROOTS
 
 try:
     import pyperclip
@@ -34,6 +35,11 @@ try:
 except ImportError:
     screen_brightness_control = None
 
+try:
+    from plyer import notification
+except ImportError:
+    notification = None
+
 PROJECT_DIR: Final[Path] = Path(__file__).resolve().parent
 SCREENSHOTS_DIR: Final[Path] = PROJECT_DIR / "screenshots"
 VOLUME_RANGE: Final[range] = range(0, 101)
@@ -42,6 +48,15 @@ CLIPBOARD_NOT_INSTALLED: Final[str] = "Error: clipboard support not installed."
 PSUTIL_NOT_INSTALLED: Final[str] = "Error: system status support not installed."
 BRIGHTNESS_NOT_SUPPORTED: Final[str] = (
     "Error: brightness control not supported on this display/OS."
+)
+NOTIFICATION_NOT_INSTALLED: Final[str] = "Error: desktop notification support not installed."
+MAX_FILE_READ_BYTES: Final[int] = 2 * 1024 * 1024
+MAX_FILE_READ_CHARS: Final[int] = 4000
+SECRET_FILE_NAMES: Final[frozenset[str]] = frozenset(
+    {"id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "credentials", "credentials.json"}
+)
+SECRET_FILE_SUFFIXES: Final[frozenset[str]] = frozenset(
+    {".env", ".pem", ".key", ".ppk", ".p12", ".pfx", ".crt", ".cer"}
 )
 
 
@@ -118,6 +133,99 @@ class OSExecutor:
             return f"Clipboard set to: {preview}"
         except Exception as error:
             return f"Error setting clipboard: {error}"
+
+    def send_notification(self, title: str, message: str) -> str:
+        """Display a bounded cross-platform desktop notification."""
+        if not isinstance(title, str) or not isinstance(message, str):
+            return "Error sending notification: title and message must be strings."
+
+        try:
+            if notification is None:
+                return NOTIFICATION_NOT_INSTALLED
+            notification.notify(
+                title=title[:60],
+                message=message[:200],
+            )
+            return "Desktop notification sent."
+        except Exception as error:
+            return f"Error sending notification: {error}"
+
+    def list_directory(self, path: str) -> str:
+        """List an allowed directory without reading file contents."""
+        try:
+            directory, error = self._resolve_allowed_path(path)
+            if error:
+                return error
+            if not directory.exists():
+                return f"Error listing directory: path does not exist: {path}"
+            if not directory.is_dir():
+                return f"Error listing directory: path is not a directory: {path}"
+
+            entries = []
+            for entry in sorted(directory.iterdir(), key=lambda item: item.name.casefold()):
+                if entry.is_dir():
+                    entries.append(f"{entry.name} (folder)")
+                elif entry.is_file():
+                    entries.append(f"{entry.name} (file, {entry.stat().st_size} bytes)")
+            if not entries:
+                return "Directory is empty."
+            return "\n".join(entries)
+        except Exception as error:
+            return f"Error listing directory: {error}"
+
+    def read_text_file(self, path: str) -> str:
+        """Read an allowed, non-sensitive text file with size limits."""
+        try:
+            file_path, error = self._resolve_allowed_path(path)
+            if error:
+                return error
+            if self._is_secret_file(file_path):
+                return f"Refusing to read sensitive credential file: {file_path.name}"
+            if not file_path.exists():
+                return f"Error reading file: path does not exist: {path}"
+            if not file_path.is_file():
+                return f"Error reading file: path is not a file: {path}"
+
+            file_size = file_path.stat().st_size
+            if file_size > MAX_FILE_READ_BYTES:
+                return (
+                    f"Error reading file: file too large to read "
+                    f"(maximum {MAX_FILE_READ_BYTES} bytes)."
+                )
+            content = file_path.read_text(encoding="utf-8")
+            if len(content) > MAX_FILE_READ_CHARS:
+                return (
+                    content[:MAX_FILE_READ_CHARS]
+                    + f"\n\n[Content truncated to {MAX_FILE_READ_CHARS} characters.]"
+                )
+            return content
+        except Exception as error:
+            return f"Error reading file: {error}"
+
+    @staticmethod
+    def _is_secret_file(path: Path) -> bool:
+        name = path.name.casefold()
+        return (
+            name in SECRET_FILE_NAMES
+            or name.startswith(".env")
+            or name.startswith(("id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"))
+            or any(
+                name.endswith(suffix) for suffix in SECRET_FILE_SUFFIXES
+            )
+        )
+
+    @staticmethod
+    def _resolve_allowed_path(path: str) -> tuple[Path | None, str | None]:
+        if not isinstance(path, str) or not path.strip():
+            return None, "Error: file path must be a non-empty string."
+        try:
+            resolved = Path(path).expanduser().resolve()
+            allowed_roots = [Path(root).expanduser().resolve() for root in ALLOWED_FILE_ROOTS]
+            if not any(resolved == root or root in resolved.parents for root in allowed_roots):
+                return None, "Error: file path is outside the allowed file directories."
+            return resolved, None
+        except (OSError, RuntimeError, TypeError, ValueError) as error:
+            return None, f"Error resolving file path: {error}"
 
     def open_application(self, app_name: str) -> str:
         """Launch an application identified by a fixed whitelist key."""

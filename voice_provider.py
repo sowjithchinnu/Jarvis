@@ -88,7 +88,9 @@ def transcribe_audio(file_path: str) -> str:
         if is_rate_limit_error(error):
             return f"Error transcribing audio: {rate_limit_message(error)}"
         if _is_timeout_error(error):
+            logger.error("Audio transcription failed: request timed out.")
             return "Error transcribing audio: the request timed out."
+        logger.error("Audio transcription failed.")
         return f"Error transcribing audio: {error}"
 
 
@@ -131,7 +133,9 @@ def synthesize_speech(text: str) -> str:
         if is_rate_limit_error(error):
             return f"Error synthesizing speech: {rate_limit_message(error)}"
         if _is_timeout_error(error):
+            logger.error("Speech synthesis failed: request timed out.")
             return "Error synthesizing speech: the request timed out."
+        logger.error("Speech synthesis failed.")
         return f"Error synthesizing speech: {error}"
 
 

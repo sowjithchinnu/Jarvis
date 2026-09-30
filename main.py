@@ -1,10 +1,12 @@
 """Responsive terminal entry point for Jarvis."""
 
+import argparse
 import logging
 import queue
 import sys
 import threading
 
+import config as app_config
 from config import ConfigValidationError, validate_config
 from memory_store import (
     clear_all_facts,
@@ -25,6 +27,7 @@ DIM = "\033[2m"
 VOICE_TASK = object()
 WAKE_TRANSCRIPT_TASK = "wake_transcript"
 WAKE_RESTART_TASK = "wake_restart"
+LOG_LEVELS = frozenset({"debug", "info", "warning", "error"})
 
 HELP_TEXT = """Available commands:
 /c, /cancel                 stop the current request
@@ -40,8 +43,9 @@ HELP_TEXT = """Available commands:
 
 
 class TerminalSession:
-    def __init__(self, browser_name):
+    def __init__(self, browser_name, voice_disabled=False):
         self.browser_name = browser_name
+        self.voice_disabled = voice_disabled
         self._browser = None
         self.tasks = queue.Queue()
         self.cancel_event = threading.Event()
@@ -65,6 +69,7 @@ class TerminalSession:
         if self._browser is None:
             browser_label = self.browser_name.title()
             print(f"{DIM}Launching {browser_label} for browser tasks...{RESET}")
+            logging.getLogger(__name__).info("Launching %s browser.", self.browser_name)
             self._browser = BrowserExecutor(
                 browser_name=self.browser_name,
                 headless=False,
@@ -269,6 +274,9 @@ class TerminalSession:
         print(f"{RED}Jarvis error:{RESET} {message}\n")
 
     def enable_wake_word(self):
+        if self.voice_disabled:
+            print(f"{YELLOW}Jarvis:{RESET} voice disabled via --no-voice\n")
+            return
         with self.wake_lock:
             if self.wake_listener is not None and self.wake_enabled:
                 print(f"{YELLOW}Jarvis:{RESET} Wake-word listening is already active.\n")
@@ -338,9 +346,65 @@ class TerminalSession:
         self.worker.join(timeout=25)
 
 
+def build_argument_parser():
+    parser = argparse.ArgumentParser(description="Run the Jarvis terminal agent.")
+    parser.add_argument(
+        "--browser",
+        choices=("chrome", "brave"),
+        help="override JARVIS_DEFAULT_BROWSER for this run",
+    )
+    parser.add_argument(
+        "--no-voice",
+        action="store_true",
+        help="disable voice features for this run",
+    )
+    parser.add_argument(
+        "--no-wakeword",
+        action="store_true",
+        help="disable wake-word autostart for this run",
+    )
+    parser.add_argument(
+        "--log-level",
+        choices=tuple(sorted(LOG_LEVELS)),
+        help="set logging verbosity for this run (overrides JARVIS_LOG_LEVEL)",
+    )
+    return parser
+
+
+def parse_cli_args(argv=None):
+    return build_argument_parser().parse_args(argv)
+
+
+def resolve_startup_config(args):
+    configured_log_level = (args.log_level or app_config.JARVIS_LOG_LEVEL).lower()
+    log_level = configured_log_level if configured_log_level in LOG_LEVELS else "info"
+    return {
+        "browser": args.browser or app_config.JARVIS_DEFAULT_BROWSER,
+        "voice_enabled": app_config.VOICE_ENABLED and not args.no_voice,
+        "autostart_wakeword": (
+            app_config.JARVIS_AUTOSTART_WAKEWORD
+            and not args.no_wakeword
+            and not args.no_voice
+        ),
+        "log_level": log_level,
+    }
+
+
 def main():
+    args = parse_cli_args()
+    startup_config = resolve_startup_config(args)
+    browser_name = startup_config["browser"]
+    voice_enabled = startup_config["voice_enabled"]
+    autostart_wakeword = startup_config["autostart_wakeword"]
+
     try:
-        validate_config()
+        validate_config(
+            browser=args.browser,
+            autostart_wakeword=(
+                False if args.no_wakeword or args.no_voice else None
+            ),
+            voice_enabled=False if args.no_voice else None,
+        )
     except ConfigValidationError as error:
         print(f"{RED}{error}{RESET}", file=sys.stderr)
         raise SystemExit(1)
@@ -372,16 +436,23 @@ def main():
     )
     from voice_wakeword import WakeWordListener, WakeWordListenerError
 
+    log_level = startup_config["log_level"]
+
     logging.basicConfig(
         filename="jarvis.log",
-        level=logging.INFO,
+        level=getattr(logging, log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    voice_status = "enabled" if voice_enabled else "disabled"
+    print(
+        f"Startup configuration: browser={browser_name}, voice={voice_status}, "
+        f"log-level={log_level}"
     )
     print("Type /help for commands.\n")
 
-    session = TerminalSession(JARVIS_DEFAULT_BROWSER)
+    session = TerminalSession(browser_name, voice_disabled=args.no_voice)
     session.start()
-    if JARVIS_AUTOSTART_WAKEWORD:
+    if autostart_wakeword:
         session.enable_wake_word()
     last_typed_request = None
     try:
@@ -404,7 +475,10 @@ def main():
                 print(f"{YELLOW}Jarvis:{RESET} Cancellation requested.\n")
                 continue
             if command in {"/w on", "/wake-on", "/wakeword-on"}:
-                session.enable_wake_word()
+                if args.no_voice:
+                    print(f"{YELLOW}Jarvis:{RESET} voice disabled via --no-voice\n")
+                else:
+                    session.enable_wake_word()
                 continue
             if command in {"/w off", "/wake-off", "/wakeword-off"}:
                 session.disable_wake_word()
@@ -511,7 +585,9 @@ def main():
                     )
                 continue
             if command in {"/v", "/voice"}:
-                if not VOICE_ENABLED:
+                if args.no_voice:
+                    print(f"{YELLOW}Jarvis:{RESET} voice disabled via --no-voice\n")
+                elif not VOICE_ENABLED:
                     print(f"{RED}Jarvis error:{RESET} {VOICE_DEPENDENCY_ERROR}\n")
                 else:
                     session.submit_voice()

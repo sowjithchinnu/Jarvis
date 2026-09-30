@@ -132,7 +132,7 @@ class WakeWordListener:
         with self._state_lock:
             self._model = model
             if self._debug:
-                print(
+                logger.debug(
                     "Wake-word debug: audio stream "
                     f"samplerate={SAMPLE_RATE} Hz, dtype=int16, "
                     f"chunk_size={FRAME_SAMPLES} samples; openWakeWord model "
@@ -246,12 +246,12 @@ class WakeWordListener:
 
     @staticmethod
     def _print_debug_scores(prediction: Any) -> None:
-        """Print raw model scores for one prediction when debug mode is enabled."""
+        """Log raw model scores when wake-word debug mode is enabled."""
         if isinstance(prediction, dict):
             for score in prediction.values():
-                print(f"score: {score}", flush=True)
+                logger.debug("Wake-word score: %s", score)
         else:
-            print(f"score: {prediction}", flush=True)
+            logger.debug("Wake-word score: %s", prediction)
 
     def _notify_detection(self) -> None:
         now = time.monotonic()

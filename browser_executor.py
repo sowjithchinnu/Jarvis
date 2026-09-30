@@ -10,6 +10,7 @@ All methods return plain strings/dicts so they can be dropped straight
 back into the chat message history as tool results.
 """
 import ipaddress
+import logging
 import threading
 from pathlib import Path
 from urllib.parse import quote_plus, urlparse
@@ -33,6 +34,7 @@ CHALLENGE_PHRASES = (
     "cf-chl-",
 )
 MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
+logger = logging.getLogger(__name__)
 
 
 def is_likely_blocked(page) -> bool:
@@ -111,6 +113,7 @@ class BrowserExecutor:
         self.page.on("download", self._handle_download)
         self._element_map = {}  # element_id -> Playwright Locator
         self._undo_stack = []
+        logger.info("Browser launched: %s.", self._browser_name)
 
     def is_alive(self) -> bool:
         """Return whether the Playwright browser and current page are usable."""
@@ -125,6 +128,7 @@ class BrowserExecutor:
 
     def relaunch(self) -> None:
         """Replace a crashed browser with a fresh browser and page."""
+        logger.info("Relaunching browser after session loss: %s.", self._browser_name)
         try:
             self.browser.close()
         except Exception:
@@ -355,6 +359,7 @@ class BrowserExecutor:
                 f"size {self._format_file_size(size)}"
             )
         except Exception as error:
+            logger.error("Browser download handling failed: %s", error)
             return f"Error saving download: {error}"
 
     @staticmethod

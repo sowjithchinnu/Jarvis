@@ -11,6 +11,7 @@ not general-purpose OS control and does not simulate keyboard or mouse input.
 from __future__ import annotations
 
 import platform
+import logging
 import re
 import subprocess
 from datetime import datetime
@@ -52,6 +53,7 @@ BRIGHTNESS_NOT_SUPPORTED: Final[str] = (
 NOTIFICATION_NOT_INSTALLED: Final[str] = "Error: desktop notification support not installed."
 MAX_FILE_READ_BYTES: Final[int] = 2 * 1024 * 1024
 MAX_FILE_READ_CHARS: Final[int] = 4000
+logger = logging.getLogger(__name__)
 SECRET_FILE_NAMES: Final[frozenset[str]] = frozenset(
     {"id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "credentials", "credentials.json"}
 )
@@ -73,6 +75,7 @@ class OSExecutor:
             image.save(screenshot_path, format="PNG")
             return str(screenshot_path)
         except Exception as error:
+            logger.error("Screenshot failed: %s", error)
             return f"Error taking screenshot: {error}"
 
     def get_volume(self) -> int | str:
@@ -87,6 +90,7 @@ class OSExecutor:
                 return self._linux_get_volume()
             return f"Error: unsupported operating system '{system}'."
         except Exception as error:
+            logger.error("Reading system volume failed: %s", error)
             return f"Error reading system volume: {error}"
 
     def set_volume(self, level: int) -> str:
@@ -106,6 +110,7 @@ class OSExecutor:
                 return self._linux_set_volume(level)
             return f"Error: unsupported operating system '{system}'."
         except Exception as error:
+            logger.error("Setting system volume failed: %s", error)
             return f"Error setting system volume: {error}"
 
     def get_clipboard(self) -> str:
@@ -118,6 +123,7 @@ class OSExecutor:
                 return "Clipboard does not contain text."
             return clipboard
         except Exception as error:
+            logger.error("Reading clipboard failed.")
             return f"Error reading clipboard: {error}"
 
     def set_clipboard(self, text: str) -> str:
@@ -132,6 +138,7 @@ class OSExecutor:
             preview = text if len(text) <= 100 else f"{text[:97]}..."
             return f"Clipboard set to: {preview}"
         except Exception as error:
+            logger.error("Setting clipboard failed.")
             return f"Error setting clipboard: {error}"
 
     def send_notification(self, title: str, message: str) -> str:
@@ -148,6 +155,7 @@ class OSExecutor:
             )
             return "Desktop notification sent."
         except Exception as error:
+            logger.error("Sending desktop notification failed: %s", error)
             return f"Error sending notification: {error}"
 
     def list_directory(self, path: str) -> str:
@@ -171,6 +179,7 @@ class OSExecutor:
                 return "Directory is empty."
             return "\n".join(entries)
         except Exception as error:
+            logger.error("Listing directory failed.")
             return f"Error listing directory: {error}"
 
     def read_text_file(self, path: str) -> str:
@@ -200,6 +209,7 @@ class OSExecutor:
                 )
             return content
         except Exception as error:
+            logger.error("Reading text file failed.")
             return f"Error reading file: {error}"
 
     @staticmethod

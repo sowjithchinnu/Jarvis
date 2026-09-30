@@ -36,6 +36,17 @@ mode-selection menu. The browser is launched lazily on the first browser
 request, using `JARVIS_DEFAULT_BROWSER` (`chrome` or `brave`, default `chrome`),
 and sessions are separate from existing tabs or profiles.
 
+### Command-line flags
+
+All flags are optional and override the corresponding environment/configuration
+value for the current run:
+
+- `--browser {chrome,brave}` — overrides `JARVIS_DEFAULT_BROWSER`.
+- `--no-voice` — disables voice features and wake-word autostart.
+- `--no-wakeword` — disables wake-word autostart while keeping `/voice` and
+  manual `/wake-on` available.
+- `--log-level {debug,info,warning,error}` — sets logging verbosity for the run.
+
 Commands are available in long and short forms:
 
 - `/c` or `/cancel` — stop the current request.
@@ -247,6 +258,11 @@ download, ask “what did you just download” and Jarvis can use
   once. The new session has no previous page state: navigate and log in again,
   and do not reuse old `el_1`, `el_2`, etc. references. Undo history is also
   lost across browser recovery.
+- Jarvis writes structured operational events to `jarvis.log` using standard
+  logging levels: `DEBUG` for verbose diagnostics, `INFO` for normal events,
+  `WARNING` for recoverable issues and retries, and `ERROR` for failures.
+  The default is `INFO`; use `--log-level {debug,info,warning,error}` or set
+  `JARVIS_LOG_LEVEL` to change it. The command-line flag takes precedence.
 
 ## Safety features
 

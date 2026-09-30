@@ -126,5 +126,12 @@ def request_with_retry(
                 )
             else:
                 logger.warning("%s failed; retrying in %ss.", operation, delay)
+            logger.debug(
+                "%s retry backoff: attempt=%d delay=%ss rate_limited=%s",
+                operation,
+                attempt + 1,
+                delay,
+                rate_limited,
+            )
             time.sleep(delay)
             attempt += 1

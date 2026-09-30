@@ -23,6 +23,7 @@ MODEL_NAME = os.environ.get("JARVIS_MODEL", DEFAULT_MODEL)
 JARVIS_DEFAULT_BROWSER = os.environ.get("JARVIS_DEFAULT_BROWSER", "chrome").strip().lower()
 _autostart_wakeword_value = os.environ.get("JARVIS_AUTOSTART_WAKEWORD", "true").strip().lower()
 JARVIS_AUTOSTART_WAKEWORD = _autostart_wakeword_value == "true"
+JARVIS_LOG_LEVEL = os.environ.get("JARVIS_LOG_LEVEL", "info").strip().lower() or "info"
 
 # Voice provider settings. These can be changed without editing Python code.
 STT_MODEL = os.environ.get("JARVIS_STT_MODEL", "whisper-large-v3")
@@ -96,20 +97,27 @@ class ConfigValidationError(RuntimeError):
         ))
 
 
-def validate_config():
+def validate_config(*, browser=None, autostart_wakeword=None, voice_enabled=None):
     """Validate all startup configuration and raise one aggregated error."""
     errors = []
+    effective_browser = JARVIS_DEFAULT_BROWSER if browser is None else browser
+    effective_autostart = (
+        _autostart_wakeword_value
+        if autostart_wakeword is None
+        else ("true" if autostart_wakeword else "false")
+    )
+    effective_voice_enabled = VOICE_ENABLED if voice_enabled is None else voice_enabled
 
     if not isinstance(API_KEY, str) or not API_KEY.strip():
         errors.append("GROQ_API_KEY must be present and non-empty.")
 
-    if JARVIS_DEFAULT_BROWSER not in {"chrome", "brave"}:
+    if effective_browser not in {"chrome", "brave"}:
         errors.append("JARVIS_DEFAULT_BROWSER must be either 'chrome' or 'brave'.")
 
-    if _autostart_wakeword_value not in {"true", "false"}:
+    if effective_autostart not in {"true", "false"}:
         errors.append("JARVIS_AUTOSTART_WAKEWORD must be either 'true' or 'false'.")
 
-    if VOICE_ENABLED and TTS_VOICE not in ORPHEUS_VALID_VOICES:
+    if effective_voice_enabled and TTS_VOICE not in ORPHEUS_VALID_VOICES:
         errors.append(
             f"JARVIS_TTS_VOICE '{TTS_VOICE}' is not a known Orpheus voice."
         )

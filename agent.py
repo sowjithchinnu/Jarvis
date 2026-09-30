@@ -554,6 +554,10 @@ class Agent:
                 and isinstance(result, str)
                 and result.startswith(BOT_DETECTION_MARKER)
             )
+            if likely_blocked:
+                logger.warning("Bot-detection block detected during tool execution: %s", name)
+            elif isinstance(result, str) and result.startswith("Error"):
+                logger.error("Tool returned an error: %s", name)
             self._last_tool_name = name
             if name in {"search_web", "read_page_text"}:
                 self._last_page_text = result
@@ -585,6 +589,11 @@ class Agent:
         likely_blocked: bool | None = None,
     ):
         safe_args = json.dumps(self._audit_args(args), sort_keys=True)
+        logger.debug(
+            "Tool arguments (redacted before logging) tool=%s args=%s",
+            tool_name,
+            safe_args,
+        )
         if tool_name in {"open_url", "search_web"} and likely_blocked is not None:
             logger.info(
                 "AUDIT tool=%s args=%s outcome=%s likely_blocked=%s",
